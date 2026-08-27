@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hummingbird Camera - Local Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0a0f;
+            color: #e8e8f0;
+            min-height: 100vh;
+        }
+        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 0;
+            border-bottom: 1px solid #2a2a3a;
+            margin-bottom: 24px;
+        }
+        .header h1 { font-size: 24px; display: flex; align-items: center; gap: 12px; }
+        .status-dot {
+            width: 12px; height: 12px; border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.online { background: #4ade80; box-shadow: 0 0 8px rgba(74, 222, 128, 0.5); }
+        .status-dot.offline { background: #f87171; }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .stat-card {
+            background: #1a1a26;
+            border: 1px solid #2a2a3a;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .stat-card h3 {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #8888a0;
+            margin-bottom: 8px;
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #6c63ff;
+        }
+        .stat-sub {
+            font-size: 13px;
+            color: #555570;
+            margin-top: 4px;
+        }
+
+        /* Sections */
+        .section {
+            background: #1a1a26;
+            border: 1px solid #2a2a3a;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .section-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #2a2a3a;
+            font-size: 14px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .section-body { padding: 16px 20px; }
+
+        /* Log entries */
+        .log-entry {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 12px;
+            padding: 4px 0;
+            border-bottom: 1px solid #12121a;
+            display: flex;
+            gap: 12px;
+        }
+        .log-time { color: #555570; white-space: nowrap; }
+        .log-level { font-weight: 600; white-space: nowrap; min-width: 50px; }
+        .log-level.INFO { color: #6c63ff; }
+        .log-level.WARN { color: #fb923c; }
+        .log-level.ERROR { color: #f87171; }
+        .log-message { color: #8888a0; word-break: break-word; }
+
+        /* Captures grid */
+        .captures-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 12px;
+        }
+        .capture-thumb {
+            aspect-ratio: 4/3;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            border: 1px solid #2a2a3a;
+            transition: border-color 0.2s;
+        }
+        .capture-thumb:hover { border-color: #6c63ff; }
+        .capture-thumb img {
+            width: 100%; height: 100%; object-fit: cover;
+        }
+
+        /* System info */
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #12121a;
+            font-size: 13px;
+        }
+        .info-label { color: #8888a0; }
+        .info-value { color: #e8e8f0; font-weight: 500; }
+
+        /* Capture button */
+        .capture-btn {
+            background: linear-gradient(135deg, #6c63ff 0%, #7f78ff 100%);
+            border: none;
+            color: white;
+            padding: 16px 32px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 4px 16px rgba(108, 99, 255, 0.3);
+        }
+        .capture-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(108, 99, 255, 0.4);
+        }
+        .capture-btn:active {
+            transform: translateY(0);
+        }
+        .capture-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .capture-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        /* Capture result */
+        .capture-result {
+            margin-top: 20px;
+            padding: 20px;
+            background: #12121a;
+            border-radius: 12px;
+            border: 1px solid #2a2a3a;
+        }
+        .capture-result.hidden {
+            display: none;
+        }
+        .result-image {
+            width: 100%;
+            max-width: 640px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            border: 1px solid #2a2a3a;
+        }
+        .result-info {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 12px;
+        }
+        .result-badge {
+            padding: 6px 12px;
+            border-radius: 16px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .badge-bird { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
+        .badge-animal { background: rgba(251, 146, 60, 0.2); color: #fb923c; }
+        .badge-human { background: rgba(248, 113, 113, 0.2); color: #f87171; }
+        .result-timestamp {
+            font-size: 13px;
+            color: #8888a0;
+            margin-top: 8px;
+        }
+        .result-detections {
+            margin-top: 12px;
+        }
+        .detection-item {
+            display: inline-block;
+            padding: 6px 12px;
+            background: #1a1a26;
+            border: 1px solid #2a2a3a;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+
+        @media (max-width: 640px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .stat-value { font-size: 24px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><span>🐦</span> Hummingbird Camera</h1>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText" style="font-size: 13px; color: #8888a0;">Connecting...</span>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Captures</h3>
+                <div class="stat-value" id="statCaptures">0</div>
+                <div class="stat-sub" id="statUptime">Uptime: --</div>
+            </div>
+            <div class="stat-card">
+                <h3>Detections</h3>
+                <div class="stat-value" id="statDetections">0</div>
+                <div class="stat-sub" id="statInference">Inference: --</div>
+            </div>
+            <div class="stat-card">
+                <h3>Uploads</h3>
+                <div class="stat-value" id="statUploads">0</div>
+                <div class="stat-sub" id="statR2Count">R2: --</div>
+            </div>
+            <div class="stat-card">
+                <h3>Email Alerts</h3>
+                <div class="stat-value" id="statAlerts">0</div>
+                <div class="stat-sub" id="statLastDetection">Last: --</div>
+            </div>
+        </div>
+
+        <!-- System Info -->
+        <div class="section">
+            <div class="section-header">⚙️ System Info</div>
+            <div class="section-body">
+                <div class="info-row">
+                    <span class="info-label">Detection Model</span>
+                    <span class="info-value" id="infoModel">--</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Last Capture</span>
+                    <span class="info-value" id="infoLastCapture">--</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Last Detection</span>
+                    <span class="info-value" id="infoLastDetection">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Captures -->
+        <div class="section">
+            <div class="section-header">📷 Recent Local Captures</div>
+            <div class="section-body">
+                <div class="captures-grid" id="capturesGrid">
+                    <p style="color: #555570; font-size: 13px;">Loading...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Logs -->
+        <div class="section">
+            <div class="section-header">📋 Live Logs</div>
+            <div class="section-body" id="logContainer" style="max-height: 300px; overflow-y: auto;">
+                <p style="color: #555570; font-size: 13px;">Connecting to log stream...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Poll status every 3 seconds
+        async function updateStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+
+                document.getElementById('statusDot').className =
+                    'status-dot ' + (data.running ? 'online' : 'offline');
+                document.getElementById('statusText').textContent =
+                    data.running ? 'Running' : 'Stopped';
+
+                document.getElementById('statCaptures').textContent = data.stats.captures;
+                document.getElementById('statDetections').textContent = data.stats.detections;
+                document.getElementById('statUploads').textContent = data.stats.uploads;
+                document.getElementById('statAlerts').textContent = data.stats.alerts;
+                document.getElementById('statUptime').textContent = 'Uptime: ' + (data.uptime || '--');
+                document.getElementById('statInference').textContent = 'Inference: ' + (data.inference_ms ? data.inference_ms + 'ms' : '--');
+                document.getElementById('statR2Count').textContent = 'R2: ' + (data.r2_file_count >= 0 ? data.r2_file_count : '--');
+                document.getElementById('infoModel').textContent = data.model_type || '--';
+                document.getElementById('infoLastCapture').textContent = data.last_capture || '--';
+                document.getElementById('infoLastDetection').textContent = data.last_detection || '--';
+            } catch (e) {
+                document.getElementById('statusDot').className = 'status-dot offline';
+                document.getElementById('statusText').textContent = 'Disconnected';
+            }
+        }
+
+        // Load recent captures
+        async function loadCaptures() {
+            try {
+                const res = await fetch('/api/captures');
+                const captures = await res.json();
+                const grid = document.getElementById('capturesGrid');
+
+                if (captures.length === 0) {
+                    grid.innerHTML = '<p style="color: #555570; font-size: 13px;">No captures yet</p>';
+                    return;
+                }
+
+                grid.innerHTML = captures.slice(0, 12).map(c => `
+                    <div class="capture-thumb">
+                        <img src="/captures/${c.filename}" alt="${c.filename}" loading="lazy">
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load captures:', e);
+            }
+        }
+
+        // SSE log stream
+        function connectLogStream() {
+            const source = new EventSource('/api/logs/stream');
+            const container = document.getElementById('logContainer');
+            let firstLog = true;
+
+            source.onmessage = (event) => {
+                if (firstLog) {
+                    container.innerHTML = '';
+                    firstLog = false;
+                }
+                const log = JSON.parse(event.data);
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.innerHTML = `
+                    <span class="log-time">${log.time}</span>
+                    <span class="log-level ${log.level}">${log.level}</span>
+                    <span class="log-message">${log.message}</span>
+                `;
+                container.appendChild(entry);
+                container.scrollTop = container.scrollHeight;
+
+                // Keep max 50 visible entries
+                while (container.children.length > 50) {
+                    container.removeChild(container.firstChild);
+                }
+            };
+
+            source.onerror = () => {
+                source.close();
+                setTimeout(connectLogStream, 5000);
+            };
+        }
+
+        // Initialize
+        updateStatus();
+        loadCaptures();
+        connectLogStream();
+        setInterval(updateStatus, 3000);
+        setInterval(loadCaptures, 10000);
+    </script>
+</body>
+</html>

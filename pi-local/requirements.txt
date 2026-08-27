@@ -1,0 +1,25 @@
+# Core
+numpy>=1.21.0
+# IMPORTANT: OpenCV must stay on 4.x - OpenCV 5.0 removed the Caffe DNN
+# importer and breaks TF SSD frozen graphs on this stack.
+opencv-python-headless>=4.5.0,<5.0.0
+python-dotenv>=1.0.0
+
+# Camera (Raspberry Pi)
+# picamera2 is pre-installed on Raspberry Pi OS Bookworm+
+# For older OS: pip install picamera
+
+# AI Detection - lightweight stack for RPi 3 (32 GB disk)
+# MobileNet-SSD model files are auto-downloaded by deploy.sh
+# and loaded via OpenCV DNN (no heavy PyTorch needed).
+#
+# Optional upgrades (install manually if you have disk space):
+# tflite-runtime      # TFLite (~30 MB, needs yolov8n-int8.tflite)
+# ultralytics>=8.0.0  # YOLOv8 (~4.2 GB, requires large disk)
+
+# Web
+flask>=3.0.0
+requests>=2.28.0
+
+# Optional: for development on non-Pi machines
+# Pillow>=9.0.0

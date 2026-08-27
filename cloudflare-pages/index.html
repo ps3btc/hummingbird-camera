@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hummingbird Camera — Detection Gallery</title>
+    <meta name="description" content="AI-powered hummingbird camera: live detection gallery and visit analytics">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐦</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-icon">🐦</span>
+                    <div class="logo-text">
+                        <h1>Hummingbird Camera</h1>
+                        <span class="logo-sub">AI Detection Gallery</span>
+                    </div>
+                </div>
+                <div class="header-stats">
+                    <div class="stat-badge" id="storageBadge" title="R2 storage usage">
+                        <span class="stat-icon">💾</span>
+                        <span id="storageCount">--</span>
+                    </div>
+                    <button class="refresh-btn" id="refreshBtn" title="Refresh" aria-label="Refresh">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Summary cards -->
+        <section class="summary-strip" id="summaryStrip">
+            <div class="summary-card">
+                <span class="summary-value" id="totalVisits">–</span>
+                <span class="summary-label">Total Visits</span>
+            </div>
+            <div class="summary-card accent-bird">
+                <span class="summary-value" id="birdVisits">–</span>
+                <span class="summary-label">Bird Visits</span>
+            </div>
+            <div class="summary-card accent-animal">
+                <span class="summary-value" id="animalVisits">–</span>
+                <span class="summary-label">Animal Visits</span>
+            </div>
+            <div class="summary-card accent-human">
+                <span class="summary-value" id="humanVisits">–</span>
+                <span class="summary-label">Human Visits</span>
+            </div>
+        </section>
+
+        <!-- Analytics -->
+        <section class="analytics" id="analytics">
+            <div class="section-heading">
+                <h2>Visit Frequency</h2>
+                <span class="section-note" id="analyticsNote">loading…</span>
+            </div>
+            <div class="charts-row">
+                <div class="chart-card">
+                    <h3>Visits per Month</h3>
+                    <div class="chart-wrap"><canvas id="monthlyChart"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3>Visits by Hour of Day</h3>
+                    <div class="chart-wrap"><canvas id="hourlyChart"></canvas></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Controls: filter buttons + category toggles -->
+        <section class="controls">
+            <div class="filter-bar" id="filterBar">
+                <button class="filter-btn active" data-filter="all">All</button>
+                <button class="filter-btn" data-filter="bird">🐦 Birds</button>
+                <button class="filter-btn" data-filter="animal">🦊 Animals</button>
+                <button class="filter-btn" data-filter="human">👤 Humans</button>
+            </div>
+            <div class="toggle-group" id="toggleGroup">
+                <label class="toggle" data-category="bird">
+                    <input type="checkbox" id="toggleBird" checked>
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    <span class="toggle-label">Birds</span>
+                </label>
+                <label class="toggle" data-category="animal">
+                    <input type="checkbox" id="toggleAnimal" checked>
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    <span class="toggle-label">Animals</span>
+                </label>
+                <label class="toggle" data-category="human">
+                    <input type="checkbox" id="toggleHuman">
+                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    <span class="toggle-label">Humans</span>
+                </label>
+            </div>
+        </section>
+
+        <!-- Gallery Grid -->
+        <main class="gallery" id="gallery">
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Loading captures…</p>
+            </div>
+        </main>
+
+        <!-- Load More -->
+        <div class="load-more" id="loadMore" style="display: none;">
+            <button class="load-more-btn" id="loadMoreBtn">Load More</button>
+        </div>
+
+        <!-- Empty State -->
+        <div class="empty-state" id="emptyState" style="display: none;">
+            <div class="empty-icon">📷</div>
+            <h2>No Captures Yet</h2>
+            <p>The camera hasn't uploaded any images matching the current filters. Try toggling categories on, or check back soon!</p>
+        </div>
+
+        <footer class="footer">
+            <span>Raspberry Pi 3 · MobileNet-SSD · Cloudflare R2</span>
+        </footer>
+
+        <!-- Lightbox -->
+        <div class="lightbox" id="lightbox" role="dialog" aria-modal="true">
+            <div class="lightbox-overlay" id="lightboxOverlay"></div>
+            <div class="lightbox-content">
+                <button class="lightbox-close" id="lightboxClose" aria-label="Close">&times;</button>
+                <button class="lightbox-nav lightbox-prev" id="lightboxPrev" aria-label="Previous">‹</button>
+                <button class="lightbox-nav lightbox-next" id="lightboxNext" aria-label="Next">›</button>
+                <div class="lightbox-image-wrapper" id="lightboxWrapper">
+                    <img class="lightbox-image" id="lightboxImage" src="" alt="Capture">
+                    <div class="bbox-layer" id="lightboxBoxes"></div>
+                </div>
+                <div class="lightbox-info">
+                    <div class="lightbox-timestamp" id="lightboxTimestamp"></div>
+                    <div class="lightbox-detections" id="lightboxDetections"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
