@@ -595,6 +595,61 @@ body {
 .lightbox-prev { left: 18px; }
 .lightbox-next { right: 18px; }
 
+/* ── Slideshow Controls ─────────────────────────────────── */
+
+.lightbox-slideshow {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(22, 27, 38, 0.9);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 28px;
+    padding: 6px 14px;
+}
+
+.slideshow-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.slideshow-btn:hover { transform: scale(1.1); }
+.slideshow-btn.playing { background: var(--bird); }
+
+.slideshow-speed {
+    display: flex;
+    gap: 4px;
+}
+
+.speed-btn {
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all var(--transition);
+}
+
+.speed-btn:hover { border-color: var(--accent); color: var(--accent); }
+.speed-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
 /* ── Responsive ─────────────────────────────────────────── */
 
 @media (max-width: 768px) {

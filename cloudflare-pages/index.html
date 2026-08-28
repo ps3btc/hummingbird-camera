@@ -132,6 +132,14 @@
                 <button class="lightbox-close" id="lightboxClose" aria-label="Close">&times;</button>
                 <button class="lightbox-nav lightbox-prev" id="lightboxPrev" aria-label="Previous">‹</button>
                 <button class="lightbox-nav lightbox-next" id="lightboxNext" aria-label="Next">›</button>
+                <div class="lightbox-slideshow">
+                    <button class="slideshow-btn" id="slideshowPlay" aria-label="Play slideshow" title="Auto-cycle images">▶</button>
+                    <div class="slideshow-speed" id="slideshowSpeed" style="display:none">
+                        <button class="speed-btn active" data-speed="3">3s</button>
+                        <button class="speed-btn" data-speed="2">2s</button>
+                        <button class="speed-btn" data-speed="1">1s</button>
+                    </div>
+                </div>
                 <div class="lightbox-image-wrapper" id="lightboxWrapper">
                     <img class="lightbox-image" id="lightboxImage" src="" alt="Capture">
                     <div class="bbox-layer" id="lightboxBoxes"></div>

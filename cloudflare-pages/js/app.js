@@ -25,6 +25,8 @@ let cursor = null;
 let truncated = false;
 let loading = false;
 let lightboxIndex = -1;
+let slideshowTimer = null;
+let slideshowSpeed = 3;  // seconds between frames
 
 // Category visibility toggles (default: birds + animals on, humans hidden, motion shown)
 const visible = { bird: true, animal: true, human: false, motion: true };
@@ -43,6 +45,8 @@ const lightboxImage = document.getElementById('lightboxImage');
 const lightboxBoxes = document.getElementById('lightboxBoxes');
 const lightboxTimestamp = document.getElementById('lightboxTimestamp');
 const lightboxDetections = document.getElementById('lightboxDetections');
+const slideshowPlay = document.getElementById('slideshowPlay');
+const slideshowSpeedEl = document.getElementById('slideshowSpeed');
 const toggles = {
     bird: document.getElementById('toggleBird'),
     animal: document.getElementById('toggleAnimal'),
@@ -395,11 +399,24 @@ function setupLightbox() {
     document.getElementById('lightboxPrev').addEventListener('click', () => stepLightbox(-1));
     document.getElementById('lightboxNext').addEventListener('click', () => stepLightbox(1));
 
-    document.addEventListener('keydown', e => {
+    document.addEventListener('keydown', (e) => {
         if (!lightbox.classList.contains('open')) return;
         if (e.key === 'Escape') closeLightbox();
         if (e.key === 'ArrowLeft') stepLightbox(-1);
         if (e.key === 'ArrowRight') stepLightbox(1);
+        if (e.key === ' ') { e.preventDefault(); toggleSlideshow(); }
+    });
+    
+    // Slideshow controls
+    slideshowPlay.addEventListener('click', toggleSlideshow);
+    slideshowSpeedEl.querySelectorAll('.speed-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            slideshowSpeed = parseInt(btn.dataset.speed, 10);
+            slideshowSpeedEl.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            // Restart timer with new speed if playing
+            if (slideshowTimer) { stopSlideshow(); startSlideshow(); }
+        });
     });
 }
 
@@ -414,6 +431,9 @@ function openLightbox(index) {
     renderLightbox();
     lightbox.classList.add('open');
     document.body.style.overflow = 'hidden';
+    // Auto-start slideshow if there are multiple images
+    const idxs = visibleIndexes();
+    if (idxs.length > 2) startSlideshow();
 }
 
 function renderLightbox() {
@@ -462,8 +482,33 @@ function stepLightbox(delta) {
 }
 
 function closeLightbox() {
+    stopSlideshow();
     lightbox.classList.remove('open');
     document.body.style.overflow = '';
+}
+
+function toggleSlideshow() {
+    if (slideshowTimer) {
+        stopSlideshow();
+    } else {
+        startSlideshow();
+    }
+}
+
+function startSlideshow() {
+    stopSlideshow();
+    slideshowPlay.textContent = '⏸';
+    slideshowPlay.classList.add('playing');
+    slideshowSpeedEl.style.display = 'flex';
+    slideshowTimer = setInterval(() => stepLightbox(1), slideshowSpeed * 1000);
+}
+
+function stopSlideshow() {
+    if (slideshowTimer) clearInterval(slideshowTimer);
+    slideshowTimer = null;
+    slideshowPlay.textContent = '▶';
+    slideshowPlay.classList.remove('playing');
+    slideshowSpeedEl.style.display = 'none';
 }
 
 // ── Helpers ─────────────────────────────────────────────────
