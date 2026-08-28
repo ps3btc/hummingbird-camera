@@ -22,6 +22,11 @@ class Config:
     ALERT_EMAIL_TO = os.getenv('ALERT_EMAIL_TO', 'hareesh.nagarajan@gmail.com')
     ALERT_EMAIL_FROM = os.getenv('ALERT_EMAIL_FROM', 'alerts@loglinearexplorations.online')
     
+    # OpenAI Vision
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+    OPENAI_ENABLED = os.getenv('OPENAI_ENABLED', 'true').lower() == 'true'
+    
     # Camera & Detection
     CAMERA_RESOLUTION = os.getenv('CAMERA_RESOLUTION', '640x480')
     CAMERA_WIDTH = int(CAMERA_RESOLUTION.split('x')[0])

@@ -26,8 +26,8 @@ let truncated = false;
 let loading = false;
 let lightboxIndex = -1;
 
-// Category visibility toggles (default: birds + animals on, humans hidden)
-const visible = { bird: true, animal: true, human: false };
+// Category visibility toggles (default: birds + animals on, humans hidden, motion shown)
+const visible = { bird: true, animal: true, human: false, motion: true };
 
 // ── DOM ─────────────────────────────────────────────────────
 const gallery = document.getElementById('gallery');
@@ -130,6 +130,10 @@ function normalizeObject(obj) {
         species: md.species || '',
         timestamp: md.timestamp || obj.uploaded,
         uploaded: obj.uploaded,
+        // OpenAI metadata
+        sceneDescription: md.scene_description || '',
+        interesting: md.interesting || '',
+        aiModel: md.ai_model || 'local',
     };
 }
 
@@ -175,17 +179,23 @@ function buildCard(img, index) {
     const conf = img.maxConf > 0 ? `<span class="confidence">${Math.round(img.maxConf * 100)}%</span>` : '';
     const species = img.species
         ? `<div class="card-species">${escapeHtml(img.species)}</div>` : '';
+    const scene = img.sceneDescription
+        ? `<div class="card-scene" title="${escapeHtml(img.sceneDescription)}">${escapeHtml(img.sceneDescription.substring(0, 60))}${img.sceneDescription.length > 60 ? '...' : ''}</div>` : '';
+    const aiBadge = img.aiModel !== 'local'
+        ? `<span class="ai-badge" title="Verified by ${escapeHtml(img.aiModel)}">AI</span>` : '';
 
     card.innerHTML = `
         <div class="card-media">
             <img loading="lazy" src="${img.url}" alt="${meta.label} capture">
             <div class="bbox-layer">${renderBoxes(img.detections)}</div>
             <span class="type-badge ${meta.cls}">${meta.emoji} ${meta.label}</span>
+            ${aiBadge}
         </div>
         <div class="card-info">
             <div class="card-label">${meta.label} ${conf}</div>
             <div class="card-time">${formatTimestamp(img.timestamp)}</div>
             ${species}
+            ${scene}
         </div>`;
 
     card.addEventListener('click', () => openLightbox(index));
@@ -417,10 +427,29 @@ function renderLightbox() {
     const chips = img.detections.map(d => {
         const name = (d.class_name || 'object').toLowerCase();
         const cls = name === 'person' ? 'human' : (name === 'bird' ? 'bird' : 'animal');
-        return `<span class="det-chip ${cls}">${escapeHtml(d.class_name)} · ${Math.round((d.confidence || 0) * 100)}%</span>`;
+        const notes = d.notes ? ` · ${escapeHtml(d.notes)}` : '';
+        return `<span class="det-chip ${cls}">${escapeHtml(d.class_name)} · ${Math.round((d.confidence || 0) * 100)}%${notes}</span>`;
     }).join('');
     lightboxDetections.innerHTML = chips ||
         `<span class="det-chip motion">motion only</span>`;
+
+    // Show OpenAI metadata if available
+    let openaiHtml = '';
+    if (img.sceneDescription) {
+        openaiHtml += `<div class="lightbox-scene">${escapeHtml(img.sceneDescription)}</div>`;
+    }
+    if (img.interesting) {
+        openaiHtml += `<div class="lightbox-interesting">✨ ${escapeHtml(img.interesting)}</div>`;
+    }
+    if (img.aiModel !== 'local') {
+        openaiHtml += `<div class="lightbox-ai">Verified by ${escapeHtml(img.aiModel)}</div>`;
+    }
+    
+    // Insert OpenAI metadata after detections
+    const existingContent = lightboxDetections.innerHTML;
+    if (openaiHtml) {
+        lightboxDetections.innerHTML = existingContent + openaiHtml;
+    }
 }
 
 function stepLightbox(delta) {

@@ -2,9 +2,22 @@
 import requests
 import logging
 import json
+import numpy as np
 from pathlib import Path
 from datetime import datetime
 from app.config import Config
+
+
+class NumpyEncoder(json.JSONEncoder):
+    """JSON encoder that converts numpy types to native Python types."""
+    def default(self, obj):
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +64,7 @@ class CloudflareUploader:
                 metadata['timestamp'] = datetime.now().isoformat()
                 metadata['filename'] = image_path.name
                 
-                data = {'metadata': json.dumps(metadata)}
+                data = {'metadata': json.dumps(metadata, cls=NumpyEncoder)}
                 
                 response = self.session.post(
                     f"{self.worker_url}/upload",

@@ -1,6 +1,6 @@
 # Hummingbird Camera System
 
-An AI-powered, motion-triggered camera system for capturing hummingbirds and wildlife on a Raspberry Pi 3 Model B. Features local object detection with MobileNet-SSD, cloud storage via Cloudflare R2, a mobile-friendly detection gallery with analytics, and automated email alerts via Mailjet.
+An AI-powered, motion-triggered camera system for capturing hummingbirds and wildlife on a Raspberry Pi 3 Model B. Features hybrid detection with local MobileNet-SSD + OpenAI GPT-4o-mini vision verification, cloud storage via Cloudflare R2, a mobile-friendly detection gallery with analytics, and automated email alerts via Mailjet.
 
 **Live Gallery**: https://hummingbird-gallery.pages.dev
 
@@ -11,18 +11,26 @@ An AI-powered, motion-triggered camera system for capturing hummingbirds and wil
 │                    Raspberry Pi 3 Model B                    │
 │                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│  │   Camera     │→ │   Motion     │→ │   AI Detection   │  │
-│  │   (NoIR)     │  │   Detection  │  │  (MobileNet-SSD) │  │
-│  └──────────────┘  └──────────────┘  └──────────────────┘  │
+│  │   Camera     │→ │   Motion     │→ │  Local Detection │  │
+│  │   (NoIR)     │  │   Detection  │  │ (MobileNet-SSD)  │  │
+│  └──────────────┘  └──────────────┘  └────────┬─────────┘  │
 │                                               │              │
-│                          ┌────────────────────┼──────────┐  │
-│                          │                    │          │  │
-│                          ▼                    ▼          ▼  │
-│                   ┌─────────────┐    ┌──────────┐  ┌─────┐ │
-│                   │  Upload to  │    │  Email   │  │Local│ │
-│                   │  Cloudflare │    │  Alert   │  │Dash │ │
-│                   │  R2         │    │(Mailjet) │  │board│ │
-│                   └─────────────┘    └──────────┘  └─────┘ │
+│                                    detected? ─┤              │
+│                                    │          │              │
+│                                    ▼          ▼              │
+│                           ┌────────────┐ ┌──────────┐       │
+│                           │  OpenAI    │ │  Skip    │       │
+│                           │  GPT-4o    │ │ (false+) │       │
+│                           │  mini      │ │          │       │
+│                           └─────┬──────┘ └──────────┘       │
+│                                 │                            │
+│                   ┌─────────────┼──────────────┐            │
+│                   ▼             ▼              ▼            │
+│            ┌─────────────┐ ┌──────────┐ ┌──────────┐       │
+│            │  Upload to  │ │  Email   │ │  Local   │       │
+│            │  R2 + AI    │ │  Alert   │ │ Dashboard│       │
+│            │  metadata   │ │(Mailjet) │ │          │       │
+│            └─────────────┘ └──────────┘ └──────────┘       │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -31,7 +39,8 @@ An AI-powered, motion-triggered camera system for capturing hummingbirds and wil
               │                               │
               │  ┌─────────┐  ┌────────────┐ │
               │  │   R2    │  │   Pages    │ │
-              │  │ Storage │  │  Gallery   │ │
+              │  │ + AI    │  │  Gallery   │ │
+              │  │ metadata│  │ + AI badge │ │
               │  └─────────┘  └────────────┘ │
               │       ↑                       │
               │  ┌─────────┐                 │
@@ -44,16 +53,25 @@ An AI-powered, motion-triggered camera system for capturing hummingbirds and wil
 ## Features
 
 - **Motion-Triggered Capture**: Automatically captures images when motion is detected
-- **AI Object Detection**: Uses MobileNet-SSD via OpenCV DNN to detect birds, animals, and humans (~120ms inference on Pi 3)
+- **Hybrid AI Detection**: Two-stage pipeline:
+  1. **Local**: MobileNet-SSD via OpenCV DNN as fast first pass (~200ms)
+  2. **Cloud**: OpenAI GPT-4o-mini vision for species identification and verification (~1-2s)
+  3. Local model filters frames; only promising ones are sent to OpenAI (~500/month = ~$0.04/month)
+- **Ensemble Detection**: Loads all available models (ultralytics, tflite, opencv) and merges results via IoU
+- **Anti-False-Positive Logic**: Requires high confidence or multi-model agreement before trusting detections
 - **Smart Routing**:
-  - Any object detected → Upload to Cloudflare R2 with metadata
-  - Animal/bird detected (no humans) → Send email alert via Mailjet
+  - Local model detects something → OpenAI verifies and classifies
+  - OpenAI confirms → Upload to R2 with rich metadata (species, scene, behavior)
+  - OpenAI finds nothing → Treated as false positive, skipped
+  - Animal/bird confirmed (no humans) → Send email alert via Mailjet
 - **Cloud Gallery**: Mobile-friendly web app with:
   - Detection gallery with filter buttons (All/Birds/Animals/Humans)
   - Category toggle switches (humans hidden by default)
   - Bounding box overlays on detected objects
+  - AI verification badge for OpenAI-confirmed detections
+  - Scene descriptions and behavior notes from GPT-4o-mini
   - Monthly and hourly visit frequency charts
-  - Lightbox view with detection details
+  - Lightbox view with full detection details and AI analysis
 - **Local Dashboard**: Real-time monitoring at http://192.168.1.252:8080
 - **FIFO Storage Management**: Automatically deletes oldest files when approaching 20,000 file limit
 - **Secure**: Worker API requires Bearer token authentication; all credentials in `.env`
@@ -66,7 +84,8 @@ hummingbird-camera/
 │   ├── app/
 │   │   ├── config.py           # Configuration management
 │   │   ├── capture.py          # Motion detection & capture (picamera2)
-│   │   ├── detector.py         # MobileNet-SSD detection via OpenCV DNN
+│   │   ├── detector.py         # Ensemble detection (ultralytics, tflite, opencv)
+│   │   ├── openai_detector.py  # OpenAI GPT-4o-mini vision verification
 │   │   ├── uploader.py         # Cloudflare R2 upload
 │   │   └── notifier.py         # Mailjet email alerts
 │   ├── web/
@@ -161,6 +180,11 @@ MAILJET_API_KEY=af045d54aa878f2e805763dacb3f8bae
 MAILJET_SECRET_KEY=3d69d25f47b407ac6471e2c45e533d41
 ALERT_EMAIL_TO=hareesh.nagarajan@gmail.com
 ALERT_EMAIL_FROM=alerts@loglinearexplorations.online
+
+# OpenAI Vision (optional but recommended)
+OPENAI_API_KEY=sk-proj-your-key-here
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_ENABLED=true
 
 # Camera settings
 CAMERA_RESOLUTION=640x480
@@ -263,13 +287,16 @@ You should see:
 ```
 Camera initialized with picamera2
 MobileNet-SSD loaded via OpenCV DNN (Caffe)
+OpenAI vision verification enabled (model: gpt-4o-mini)
 System initialized successfully
 Starting main processing loop...
 ```
 
 Walk in front of the camera to test. You should see:
 ```
-Detection in ~120ms | birds=False animals=False humans=True | 1 objects
+Detection in ~200ms [opencv:1] | birds=False animals=False humans=True | 1 merged objects
+OpenAI analysis in 1800ms | birds=False animals=False humans=True | 1 objects | Person walking in yard
+OpenAI verified: 1 objects | Person walking near feeder area
 Upload successful: capture_20260827_xxxxxx.jpg
 ```
 
@@ -301,21 +328,26 @@ Features:
 - **Analytics charts**: Monthly visits (last 12 months) + hourly visits (24 hours)
 - **Filter buttons**: All / Birds / Animals / Humans
 - **Category toggles**: Independently show/hide Birds, Animals, Humans (humans hidden by default)
-- **Gallery cards**: Thumbnail, type badge, confidence score, timestamp, bounding box overlay
-- **Lightbox**: Full-size view with detection chips and bbox overlays
+- **Gallery cards**: Thumbnail, type badge, confidence score, timestamp, bounding box overlay, AI badge
+- **Lightbox**: Full-size view with detection chips, bbox overlays, scene descriptions, and AI analysis
+- **AI metadata**: Scene descriptions, behavior notes, and species identification from GPT-4o-mini
 - **Mobile responsive**: Works on phones, tablets, desktops
 - **Keyboard navigation**: Arrow keys in lightbox, Escape to close
 
 ### Email Alerts
 
 You'll receive email alerts when:
-- A bird is detected
-- An animal is detected (excluding humans)
+- A bird is detected (confirmed by OpenAI, confidence >= 80%)
+- An animal is detected (excluding humans, confirmed by OpenAI)
+
+Without OpenAI (local-only mode):
+- Email alerts require >= 99% confidence (very rare with MobileNet-SSD)
 
 Alerts include:
 - Detection timestamp
-- List of detected animals with confidence scores
+- List of detected animals with confidence scores and species names
 - Attached image
+- Scene description from GPT-4o-mini (when available)
 
 ### Viewing Logs
 
@@ -362,7 +394,12 @@ MOTION_MIN_AREA=5000         # Minimum motion area in pixels (lower = more sensi
 CAPTURE_COOLDOWN_SEC=5       # Seconds between captures
 
 # Detection settings
-DETECTION_CONF_THRESHOLD=0.45  # Detection confidence threshold (0.0-1.0)
+DETECTION_CONF_THRESHOLD=0.45  # Local detection threshold (low = gather more for OpenAI)
+
+# OpenAI Vision
+OPENAI_API_KEY=sk-proj-...     # Your OpenAI API key
+OPENAI_MODEL=gpt-4o-mini       # Vision model to use
+OPENAI_ENABLED=true            # Set to false to disable OpenAI verification
 
 # Web server
 FLASK_HOST=0.0.0.0
@@ -464,10 +501,12 @@ Adjust in `/etc/systemd/system/hummingbird-camera.service` if needed.
 
 On Raspberry Pi 3 Model B:
 - Motion detection: ~10-15 FPS
-- MobileNet-SSD inference: ~120ms per frame
-- Total cycle: ~1-2 seconds per detection
+- MobileNet-SSD inference: ~150-300ms per frame
+- OpenAI GPT-4o-mini: ~1-2 seconds per API call (network + inference)
+- Total cycle: ~2-4 seconds per verified detection
 - Memory usage: ~400-600MB
 - CPU usage: ~30-50% during detection
+- OpenAI cost: ~$0.04/month for ~500 verified images
 
 ## Security Notes
 
@@ -484,6 +523,7 @@ On Raspberry Pi 3 Model B:
 - **Cloudflare Pages**: Unlimited bandwidth, 500 builds/month
 - **Cloudflare Workers**: 100K requests/day
 - **Mailjet**: 200 emails/day (6000/month)
+- **OpenAI GPT-4o-mini**: ~$0.04/month for ~500 verified images (pay-as-you-go, no subscription)
 - **File Limit**: 20,000 files per R2 bucket (managed by FIFO deletion)
 
 ## Development
@@ -543,7 +583,8 @@ For issues or questions:
 ## Credits
 
 Built with:
-- MobileNet-SSD via OpenCV DNN
+- MobileNet-SSD via OpenCV DNN (local detection)
+- OpenAI GPT-4o-mini Vision (cloud verification & species ID)
 - Cloudflare Workers/Pages/R2
 - Mailjet Email API
 - Flask & OpenCV

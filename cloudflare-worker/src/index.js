@@ -105,6 +105,9 @@ async function handleUpload(request, env, corsHeaders) {
   else if (metadata.has_human) detectionType = 'human';
   else if (metadata.has_animal) detectionType = 'animal';
   
+  // OpenAI vision metadata (if available)
+  const openai = metadata.openai || {};
+  
   const customMetadata = {
     detection_type: detectionType,
     timestamp: metadata.timestamp || new Date().toISOString(),
@@ -114,6 +117,10 @@ async function handleUpload(request, env, corsHeaders) {
     species: detections.map(d => d.class_name).filter(Boolean).join(',') || '',
     inference_ms: String(metadata.inference_ms ?? ''),
     detections: JSON.stringify(detections),
+    // OpenAI vision metadata
+    scene_description: openai.scene_description || '',
+    interesting: openai.interesting || '',
+    ai_model: openai.model || 'local',
   };
   
   // Upload to R2

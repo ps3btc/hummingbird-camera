@@ -12,6 +12,7 @@ from threading import Thread, Event
 from app.config import Config
 from app.capture import MotionCapture
 from app.detector import ObjectDetector
+from app.openai_detector import OpenAIVisionDetector
 from app.uploader import CloudflareUploader
 from app.notifier import MailjetNotifier
 
@@ -39,6 +40,7 @@ class HummingbirdCamera:
         # Initialize components
         self.capture = MotionCapture()
         self.detector = ObjectDetector()
+        self.openai = OpenAIVisionDetector() if Config.OPENAI_ENABLED else None
         self.uploader = CloudflareUploader()
         self.notifier = MailjetNotifier()
         
@@ -48,6 +50,7 @@ class HummingbirdCamera:
             'uploads': 0,
             'alerts': 0,
             'detections': 0,
+            'openai_calls': 0,
             'start_time': datetime.now()
         }
         
@@ -93,6 +96,8 @@ class HummingbirdCamera:
         Config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
         
         logger.info("System initialized successfully")
+        if self.openai:
+            logger.info(f"OpenAI vision verification enabled (model: {Config.OPENAI_MODEL})")
         return True
     
     def _write_status_file(self):
@@ -114,7 +119,7 @@ class HummingbirdCamera:
                 },
                 'last_detection': self.stats.get('last_detection'),
                 'last_capture': self.stats.get('last_capture'),
-                'model_type': (self.detector.model_type or 'motion-only'),
+                'model_type': self._get_model_type(),
                 'inference_ms': self.detector.inference_time,
                 'r2_file_count': self.uploader.get_file_count(),
             }
@@ -123,6 +128,15 @@ class HummingbirdCamera:
                 json.dump(status, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to write status file: {e}")
+    
+    def _get_model_type(self):
+        """Get a string describing the loaded detection models."""
+        if self.motion_only:
+            return 'motion-only'
+        if hasattr(self.detector, 'models') and self.detector.models:
+            types = [m[1] for m in self.detector.models]
+            return '+'.join(types)
+        return 'unknown'
     
     def run(self):
         """Main processing loop."""
@@ -157,9 +171,34 @@ class HummingbirdCamera:
                         'inference_ms': 0.0
                     }
                     has_any_object = True  # motion capture itself is the trigger
+                    openai_result = None
                 else:
                     detection_result = self.detector.detect(frame)
                     has_any_object = len(detection_result['detections']) > 0
+                    
+                    # OpenAI verification: if local model detected something, verify with GPT-4o-mini
+                    openai_result = None
+                    if has_any_object and self.openai:
+                        self.stats['openai_calls'] += 1
+                        openai_result = self.openai.analyze(filepath)
+                        
+                        # Use OpenAI results if it returned detections
+                        if openai_result and openai_result.get('detections'):
+                            detection_result = {
+                                'detections': openai_result['detections'],
+                                'has_bird': openai_result['has_bird'],
+                                'has_animal': openai_result['has_animal'],
+                                'has_human': openai_result['has_human'],
+                                'inference_ms': openai_result['inference_ms']
+                            }
+                            logger.info(
+                                f"OpenAI verified: {len(openai_result['detections'])} objects | "
+                                f"{openai_result.get('scene_description', '')[:80]}"
+                            )
+                        elif openai_result and not openai_result.get('detections'):
+                            # OpenAI saw nothing — likely a false positive from local model
+                            logger.info("OpenAI found nothing — treating as false positive")
+                            has_any_object = False
                 
                 # Process detections
                 
@@ -167,7 +206,7 @@ class HummingbirdCamera:
                     self.stats['detections'] += 1
                     self.stats['last_detection'] = datetime.now().isoformat()
                     
-                    # Upload if any object detected (bird, animal, or human)
+                    # Build metadata for R2
                     metadata = {
                         'detections': detection_result['detections'],
                         'has_bird': detection_result['has_bird'],
@@ -176,19 +215,38 @@ class HummingbirdCamera:
                         'inference_ms': detection_result['inference_ms']
                     }
                     
+                    # Add OpenAI metadata if available
+                    if openai_result:
+                        metadata['openai'] = {
+                            'scene_description': openai_result.get('scene_description', ''),
+                            'interesting': openai_result.get('interesting', ''),
+                            'model': Config.OPENAI_MODEL
+                        }
+                    
                     if self.uploader.upload_image(filepath, metadata):
                         self.stats['uploads'] += 1
                     
-                    # Send email alert only for animals/birds (excluding humans)
+                    # Send email alert for animals/birds with high confidence
                     if detection_result['has_animal'] or detection_result['has_bird']:
                         if not detection_result['has_human']:
-                            self.notifier.send_alert(
-                                filepath,
-                                detection_result['detections'],
-                                detection_result['has_bird'],
-                                detection_result['has_animal']
-                            )
-                            self.stats['alerts'] += 1
+                            # Check max animal/bird confidence
+                            max_animal_conf = 0.0
+                            for det in detection_result['detections']:
+                                name = det.get('class_name', '').lower()
+                                if name != 'person':
+                                    max_animal_conf = max(max_animal_conf, det.get('confidence', 0))
+                            
+                            # Email threshold: 99% for local-only, 80% if OpenAI confirmed
+                            email_threshold = 0.80 if openai_result else 0.99
+                            
+                            if max_animal_conf >= email_threshold:
+                                self.notifier.send_alert(
+                                    filepath,
+                                    detection_result['detections'],
+                                    detection_result['has_bird'],
+                                    detection_result['has_animal']
+                                )
+                                self.stats['alerts'] += 1
                 
                 # Write status file for dashboard
                 self._write_status_file()
@@ -200,6 +258,7 @@ class HummingbirdCamera:
                         f"Status | Uptime: {uptime:.1f}min | "
                         f"Captures: {self.stats['captures']} | "
                         f"Detections: {self.stats['detections']} | "
+                        f"OpenAI: {self.stats['openai_calls']} | "
                         f"Uploads: {self.stats['uploads']} | "
                         f"Alerts: {self.stats['alerts']}"
                     )

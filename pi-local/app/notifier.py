@@ -41,26 +41,31 @@ class MailjetNotifier:
         
         # Send via Mailjet
         try:
-            payload = {
-                'Messages': [{
-                    'From': {
-                        'Email': Config.ALERT_EMAIL_FROM,
-                        'Name': 'Hummingbird Camera'
-                    },
-                    'To': [{
-                        'Email': Config.ALERT_EMAIL_TO,
-                        'Name': 'User'
-                    }],
-                    'Subject': subject,
-                    'TextPart': text_body,
-                    'HTMLPart': html_body,
-                    'Attachments': [{
-                        'ContentType': 'image/jpeg',
-                        'Filename': image_path.name,
-                        'Content': self._encode_image(image_path)
-                    }]
-                }]
+            image_b64 = self._encode_image(image_path)
+            
+            message = {
+                'From': {
+                    'Email': Config.ALERT_EMAIL_FROM,
+                    'Name': 'Hummingbird Camera'
+                },
+                'To': [{
+                    'Email': Config.ALERT_EMAIL_TO,
+                    'Name': 'User'
+                }],
+                'Subject': subject,
+                'TextPart': text_body,
+                'HTMLPart': html_body,
             }
+            
+            # Only attach image if encoding succeeded
+            if image_b64:
+                message['Attachments'] = [{
+                    'ContentType': 'image/jpeg',
+                    'Filename': image_path.name,
+                    'Base64Content': image_b64
+                }]
+            
+            payload = {'Messages': [message]}
             
             response = requests.post(
                 f'{self.base_url}/send',
@@ -149,5 +154,17 @@ Hummingbird Camera System | Raspberry Pi
     def _encode_image(self, image_path: Path) -> str:
         """Encode image to base64 for email attachment."""
         import base64
-        with open(image_path, 'rb') as f:
-            return base64.b64encode(f.read()).decode('utf-8')
+        try:
+            if not image_path.exists():
+                logger.warning(f"Image file not found for attachment: {image_path}")
+                return ""
+            
+            with open(image_path, 'rb') as f:
+                data = f.read()
+                if not data:
+                    logger.warning(f"Image file is empty: {image_path}")
+                    return ""
+                return base64.b64encode(data).decode('utf-8')
+        except Exception as e:
+            logger.error(f"Failed to encode image for attachment: {e}")
+            return ""
