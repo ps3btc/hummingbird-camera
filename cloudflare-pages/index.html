@@ -74,6 +74,40 @@
             </div>
         </section>
 
+        <!-- Pi Status & Uptime -->
+        <section class="pi-status" id="piStatus">
+            <div class="section-heading">
+                <h2>Raspberry Pi Status</h2>
+                <span class="status-badge" id="statusBadge">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">checking…</span>
+                </span>
+            </div>
+            <div class="charts-row">
+                <div class="chart-card">
+                    <h3>Uptime (Last 3 Weeks)</h3>
+                    <div class="chart-wrap"><canvas id="uptimeChart"></canvas></div>
+                </div>
+                <div class="chart-card status-details-card">
+                    <h3>Details</h3>
+                    <div class="status-info">
+                        <div class="status-row">
+                            <span class="status-label">Last Seen</span>
+                            <span class="status-value" id="lastSeen">–</span>
+                        </div>
+                        <div class="status-row">
+                            <span class="status-label">Overall Uptime</span>
+                            <span class="status-value" id="overallUptime">–</span>
+                        </div>
+                        <div class="status-row">
+                            <span class="status-label">Heartbeats (21d)</span>
+                            <span class="status-value" id="heartbeatCount">–</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Controls: filter buttons + category toggles -->
         <section class="controls">
             <div class="filter-bar" id="filterBar">

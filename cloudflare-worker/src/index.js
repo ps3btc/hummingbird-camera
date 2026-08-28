@@ -60,6 +60,14 @@ export default {
         return handleGetImage(request, env, corsHeaders);
       }
       
+      if (path === '/heartbeat' && request.method === 'POST') {
+        return handleHeartbeat(request, env, corsHeaders);
+      }
+      
+      if (path === '/status' && request.method === 'GET') {
+        return handleStatus(env, corsHeaders);
+      }
+      
       return Response.json({ error: 'Not found' }, { status: 404, headers: corsHeaders });
       
     } catch (error) {
@@ -287,4 +295,94 @@ async function handleGetImage(request, env, corsHeaders) {
       'Cache-Control': 'public, max-age=31536000',
     },
   });
+}
+
+/**
+ * Receive heartbeat from Raspberry Pi
+ */
+async function handleHeartbeat(request, env, corsHeaders) {
+  let details = {};
+  try {
+    details = await request.json();
+  } catch (e) {
+    // ignore parse errors, use defaults
+  }
+  
+  const now = new Date().toISOString();
+  const status = details.status || 'alive';
+  const detailsStr = JSON.stringify(details);
+  
+  await env.DB.prepare(
+    'INSERT INTO heartbeats (timestamp, status, details) VALUES (?, ?, ?)'
+  ).bind(now, status, detailsStr).run();
+  
+  // Clean up old records (keep 3 weeks)
+  const threeWeeksAgo = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString();
+  await env.DB.prepare(
+    'DELETE FROM heartbeats WHERE timestamp < ?'
+  ).bind(threeWeeksAgo).run();
+  
+  return Response.json({
+    success: true,
+    timestamp: now,
+  }, { headers: corsHeaders });
+}
+
+/**
+ * Get Pi status and uptime data for last 3 weeks
+ */
+async function handleStatus(env, corsHeaders) {
+  // Get latest heartbeat to determine current status
+  const latest = await env.DB.prepare(
+    'SELECT timestamp, status, details FROM heartbeats ORDER BY id DESC LIMIT 1'
+  ).first();
+  
+  // Determine if Pi is up (heartbeat within last 15 minutes)
+  let piStatus = 'offline';
+  let lastSeen = null;
+  if (latest) {
+    lastSeen = latest.timestamp;
+    const lastTime = new Date(latest.timestamp).getTime();
+    const now = Date.now();
+    if (now - lastTime < 15 * 60 * 1000) {
+      piStatus = 'online';
+    }
+  }
+  
+  // Get all heartbeats from last 3 weeks for uptime chart
+  const threeWeeksAgo = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString();
+  const { results } = await env.DB.prepare(
+    'SELECT timestamp, status, details FROM heartbeats WHERE timestamp >= ? ORDER BY timestamp ASC'
+  ).bind(threeWeeksAgo).all();
+  
+  // Calculate daily uptime percentages
+  const dailyUptime = {};
+  const heartbeatsByDay = {};
+  
+  for (const row of results) {
+    const day = row.timestamp.slice(0, 10); // YYYY-MM-DD
+    if (!heartbeatsByDay[day]) heartbeatsByDay[day] = 0;
+    heartbeatsByDay[day]++;
+  }
+  
+  // Calculate uptime: expected ~144 heartbeats/day (every 10 min)
+  // Uptime % = (actual / expected) * 100, capped at 100
+  const expectedPerDay = 144;
+  for (const [day, count] of Object.entries(heartbeatsByDay)) {
+    dailyUptime[day] = Math.min(100, Math.round((count / expectedPerDay) * 100));
+  }
+  
+  // Calculate overall uptime for last 3 weeks
+  const totalDays = Object.keys(heartbeatsByDay).length || 1;
+  const totalExpected = totalDays * expectedPerDay;
+  const totalActual = results.length;
+  const overallUptime = Math.min(100, Math.round((totalActual / totalExpected) * 100));
+  
+  return Response.json({
+    status: piStatus,
+    lastSeen: lastSeen,
+    overallUptime: overallUptime,
+    dailyUptime: dailyUptime,
+    heartbeatCount: results.length,
+  }, { headers: corsHeaders });
 }

@@ -71,6 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadImages();
     loadStorageCount();
     loadStats();
+    loadStatus();
 });
 
 // ── Data loading ────────────────────────────────────────────
@@ -178,6 +179,102 @@ async function loadStats() {
         console.error('Failed to load stats:', err);
         analyticsNote.textContent = 'analytics unavailable';
     }
+}
+
+async function loadStatus() {
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const lastSeen = document.getElementById('lastSeen');
+    const overallUptime = document.getElementById('overallUptime');
+    const heartbeatCountEl = document.getElementById('heartbeatCount');
+    
+    try {
+        const res = await fetch(`${WORKER_URL}/status`);
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const data = await res.json();
+        
+        // Update status indicator
+        if (data.status === 'online') {
+            statusDot.classList.add('online');
+            statusDot.classList.remove('offline');
+            statusText.textContent = 'Online';
+        } else {
+            statusDot.classList.add('offline');
+            statusDot.classList.remove('online');
+            statusText.textContent = 'Offline';
+        }
+        
+        // Update details
+        if (data.lastSeen) {
+            lastSeen.textContent = formatTimestamp(data.lastSeen, true);
+        }
+        overallUptime.textContent = `${data.overallUptime}%`;
+        heartbeatCountEl.textContent = data.heartbeatCount;
+        
+        // Draw uptime chart
+        drawUptimeChart(data.dailyUptime || {});
+    } catch (err) {
+        console.error('Failed to load status:', err);
+        statusDot.classList.add('offline');
+        statusText.textContent = 'Unknown';
+    }
+}
+
+function drawUptimeChart(dailyUptime) {
+    const ctx = document.getElementById('uptimeChart');
+    if (!ctx) return;
+    
+    // Sort dates and get last 21 days
+    const dates = Object.keys(dailyUptime).sort();
+    const labels = dates.map(d => {
+        const dt = new Date(d);
+        return `${dt.getMonth() + 1}/${dt.getDate()}`;
+    });
+    const values = dates.map(d => dailyUptime[d]);
+    
+    // Color bars by uptime percentage
+    const colors = values.map(v => {
+        if (v >= 95) return '#34d399'; // green
+        if (v >= 80) return '#fbbf24'; // yellow
+        return '#f87171'; // red
+    });
+    
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Uptime %',
+                data: values,
+                backgroundColor: colors,
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => `${ctx.parsed.y}% uptime`
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: { callback: v => v + '%', color: '#8b94a7' },
+                    grid: { color: '#232a3a' },
+                },
+                x: {
+                    ticks: { color: '#8b94a7', maxRotation: 45 },
+                    grid: { display: false },
+                }
+            }
+        }
+    });
 }
 
 // ── Cards & visibility ──────────────────────────────────────

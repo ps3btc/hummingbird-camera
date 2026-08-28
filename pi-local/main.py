@@ -5,6 +5,7 @@ import json
 import logging
 import signal
 import sys
+import requests
 from datetime import datetime
 from pathlib import Path
 from threading import Thread, Event
@@ -30,6 +31,67 @@ logger = logging.getLogger('main')
 # Status file path for dashboard
 STATUS_FILE = Config.BASE_DIR / 'status.json'
 
+HEARTBEAT_INTERVAL = 600  # 10 minutes
+
+
+class HeartbeatSender:
+    """Sends periodic heartbeats to Cloudflare Worker."""
+    
+    def __init__(self, camera_ref):
+        self.camera = camera_ref
+        self.thread = None
+        self.stop_event = Event()
+    
+    def start(self):
+        """Start heartbeat thread."""
+        self.thread = Thread(target=self._run, daemon=True)
+        self.thread.start()
+        logger.info(f"Heartbeat sender started (interval: {HEARTBEAT_INTERVAL}s)")
+    
+    def stop(self):
+        """Stop heartbeat thread."""
+        self.stop_event.set()
+        if self.thread:
+            self.thread.join(timeout=5)
+    
+    def _run(self):
+        """Send heartbeats periodically."""
+        # Send initial heartbeat immediately
+        self._send_heartbeat()
+        
+        while not self.stop_event.is_set():
+            self.stop_event.wait(HEARTBEAT_INTERVAL)
+            if not self.stop_event.is_set():
+                self._send_heartbeat()
+    
+    def _send_heartbeat(self):
+        """Send a single heartbeat to the Worker."""
+        try:
+            url = f"{Config.CLOUDFLARE_WORKER_URL}/heartbeat"
+            uptime_seconds = (datetime.now() - self.camera.stats['start_time']).total_seconds()
+            
+            payload = {
+                'status': 'alive',
+                'uptime_seconds': int(uptime_seconds),
+                'captures': self.camera.stats['captures'],
+                'uploads': self.camera.stats['uploads'],
+                'detections': self.camera.stats['detections'],
+                'motion_only': self.camera.motion_only,
+                'timestamp': datetime.now().isoformat(),
+            }
+            
+            headers = {}
+            if Config.CLOUDFLARE_API_TOKEN:
+                headers['Authorization'] = f"Bearer {Config.CLOUDFLARE_API_TOKEN}"
+            
+            resp = requests.post(url, json=payload, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                logger.debug("Heartbeat sent successfully")
+            else:
+                logger.warning(f"Heartbeat failed: HTTP {resp.status_code}")
+        except Exception as e:
+            logger.warning(f"Heartbeat error: {e}")
+
 class HummingbirdCamera:
     """Main system orchestrator."""
     
@@ -43,6 +105,7 @@ class HummingbirdCamera:
         self.openai = OpenAIVisionDetector() if Config.OPENAI_ENABLED else None
         self.uploader = CloudflareUploader()
         self.notifier = MailjetNotifier()
+        self.heartbeat = HeartbeatSender(self)
         
         # Statistics
         self.stats = {
@@ -98,6 +161,10 @@ class HummingbirdCamera:
         logger.info("System initialized successfully")
         if self.openai:
             logger.info(f"OpenAI vision verification enabled (model: {Config.OPENAI_MODEL})")
+        
+        # Start heartbeat sender
+        self.heartbeat.start()
+        
         return True
     
     def _write_status_file(self):
@@ -279,6 +346,9 @@ class HummingbirdCamera:
     def shutdown(self):
         """Clean shutdown."""
         logger.info("Shutting down system...")
+        
+        # Stop heartbeat
+        self.heartbeat.stop()
         
         # Cleanup camera
         self.capture.cleanup()

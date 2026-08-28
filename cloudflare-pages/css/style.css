@@ -198,6 +198,74 @@ body {
     display: block;
 }
 
+/* ── Pi Status Section ──────────────────────────────────── */
+
+.pi-status {
+    margin-top: 28px;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--card);
+    border: 1px solid var(--border);
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-faint);
+}
+
+.status-dot.online {
+    background: var(--bird);
+    box-shadow: 0 0 8px var(--bird);
+}
+
+.status-dot.offline {
+    background: var(--human);
+}
+
+.status-details-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.status-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    justify-content: center;
+}
+
+.status-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.status-row:last-child { border-bottom: none; }
+
+.status-label {
+    font-size: 13px;
+    color: var(--text-dim);
+}
+
+.status-value {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+}
+
 /* ── Controls ───────────────────────────────────────────── */
 
 .controls {
