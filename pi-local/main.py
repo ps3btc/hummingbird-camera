@@ -31,7 +31,7 @@ logger = logging.getLogger('main')
 # Status file path for dashboard
 STATUS_FILE = Config.BASE_DIR / 'status.json'
 
-HEARTBEAT_INTERVAL = 600  # 10 minutes
+HEARTBEAT_INTERVAL = 60  # 1 minute
 
 
 class HeartbeatSender:

@@ -378,9 +378,9 @@ async function handleStatus(env, corsHeaders) {
     heartbeatsByDay[day]++;
   }
   
-  // Calculate uptime: expected ~144 heartbeats/day (every 10 min)
+  // Calculate uptime: expected ~1440 heartbeats/day (every 1 min)
   // Uptime % = (actual / expected) * 100, capped at 100
-  const expectedPerDay = 144;
+  const expectedPerDay = 1440;
   for (const [day, count] of Object.entries(heartbeatsByDay)) {
     dailyUptime[day] = Math.min(100, Math.round((count / expectedPerDay) * 100));
   }
