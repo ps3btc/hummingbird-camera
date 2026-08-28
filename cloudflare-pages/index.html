@@ -82,6 +82,7 @@
                 <button class="filter-btn" data-filter="animal">🦊 Animals</button>
                 <button class="filter-btn" data-filter="human">👤 Humans</button>
             </div>
+            <button class="home-play-btn" id="homePlayBtn" title="Play all as video">▶ Play</button>
             <div class="toggle-group" id="toggleGroup">
                 <label class="toggle" data-category="bird">
                     <input type="checkbox" id="toggleBird" checked>
@@ -133,12 +134,7 @@
                 <button class="lightbox-nav lightbox-prev" id="lightboxPrev" aria-label="Previous">‹</button>
                 <button class="lightbox-nav lightbox-next" id="lightboxNext" aria-label="Next">›</button>
                 <div class="lightbox-slideshow">
-                    <button class="slideshow-btn" id="slideshowPlay" aria-label="Play slideshow" title="Auto-cycle images">▶</button>
-                    <div class="slideshow-speed" id="slideshowSpeed" style="display:none">
-                        <button class="speed-btn active" data-speed="3">3s</button>
-                        <button class="speed-btn" data-speed="2">2s</button>
-                        <button class="speed-btn" data-speed="1">1s</button>
-                    </div>
+                    <button class="slideshow-btn playing" id="slideshowPlay" aria-label="Toggle slideshow" title="Auto-cycle images">⏸</button>
                 </div>
                 <div class="lightbox-image-wrapper" id="lightboxWrapper">
                     <img class="lightbox-image" id="lightboxImage" src="" alt="Capture">
@@ -148,6 +144,16 @@
                     <div class="lightbox-timestamp" id="lightboxTimestamp"></div>
                     <div class="lightbox-detections" id="lightboxDetections"></div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Home Slideshow (fullscreen video mode) -->
+        <div class="home-slideshow" id="homeSlideshow">
+            <img class="home-slideshow-img" id="homeSlideshowImg" src="" alt="">
+            <div class="home-slideshow-controls">
+                <button class="home-slideshow-close" id="homeSlideshowClose">&times;</button>
+                <button class="home-slideshow-pause" id="homeSlideshowPause">⏸</button>
+                <div class="home-slideshow-info" id="homeSlideshowInfo"></div>
             </div>
         </div>
     </div>

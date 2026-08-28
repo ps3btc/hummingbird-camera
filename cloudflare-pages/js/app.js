@@ -26,7 +26,10 @@ let truncated = false;
 let loading = false;
 let lightboxIndex = -1;
 let slideshowTimer = null;
-let slideshowSpeed = 3;  // seconds between frames
+let slideshowSpeed = 0.25;  // 250ms = 4 fps, like a video
+let homeSlideshowTimer = null;
+let homeSlideshowIndex = 0;
+let homeSlideshowPaused = false;
 
 // Category visibility toggles (default: birds + animals on, humans hidden, motion shown)
 const visible = { bird: true, animal: true, human: false, motion: true };
@@ -46,7 +49,12 @@ const lightboxBoxes = document.getElementById('lightboxBoxes');
 const lightboxTimestamp = document.getElementById('lightboxTimestamp');
 const lightboxDetections = document.getElementById('lightboxDetections');
 const slideshowPlay = document.getElementById('slideshowPlay');
-const slideshowSpeedEl = document.getElementById('slideshowSpeed');
+const homePlayBtn = document.getElementById('homePlayBtn');
+const homeSlideshow = document.getElementById('homeSlideshow');
+const homeSlideshowImg = document.getElementById('homeSlideshowImg');
+const homeSlideshowClose = document.getElementById('homeSlideshowClose');
+const homeSlideshowPause = document.getElementById('homeSlideshowPause');
+const homeSlideshowInfo = document.getElementById('homeSlideshowInfo');
 const toggles = {
     bird: document.getElementById('toggleBird'),
     animal: document.getElementById('toggleAnimal'),
@@ -58,6 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupToggles();
     setupFilterButtons();
     setupLightbox();
+    setupHomeSlideshow();
     setupRefresh();
     loadImages();
     loadStorageCount();
@@ -409,15 +418,63 @@ function setupLightbox() {
     
     // Slideshow controls
     slideshowPlay.addEventListener('click', toggleSlideshow);
-    slideshowSpeedEl.querySelectorAll('.speed-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            slideshowSpeed = parseInt(btn.dataset.speed, 10);
-            slideshowSpeedEl.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            // Restart timer with new speed if playing
-            if (slideshowTimer) { stopSlideshow(); startSlideshow(); }
-        });
+}
+
+function setupHomeSlideshow() {
+    homePlayBtn.addEventListener('click', openHomeSlideshow);
+    homeSlideshowClose.addEventListener('click', closeHomeSlideshow);
+    homeSlideshowPause.addEventListener('click', toggleHomeSlideshow);
+    
+    // Keyboard controls for home slideshow
+    document.addEventListener('keydown', (e) => {
+        if (!homeSlideshow.classList.contains('open')) return;
+        if (e.key === 'Escape') closeHomeSlideshow();
+        if (e.key === ' ') { e.preventDefault(); toggleHomeSlideshow(); }
     });
+}
+
+function openHomeSlideshow() {
+    const idxs = visibleIndexes();
+    if (idxs.length === 0) return;
+    homeSlideshowIndex = 0;
+    homeSlideshowPaused = false;
+    homeSlideshow.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    renderHomeSlideshowFrame();
+    startHomeSlideshow();
+}
+
+function renderHomeSlideshowFrame() {
+    const idxs = visibleIndexes();
+    if (idxs.length === 0) return;
+    const img = images[idxs[homeSlideshowIndex % idxs.length]];
+    if (!img) return;
+    homeSlideshowImg.src = img.url;
+    const ts = formatTimestamp(img.timestamp, true);
+    const det = img.detections.map(d => d.class_name).join(', ') || 'motion';
+    homeSlideshowInfo.textContent = `${ts} · ${det}`;
+}
+
+function startHomeSlideshow() {
+    if (homeSlideshowTimer) clearInterval(homeSlideshowTimer);
+    homeSlideshowTimer = setInterval(() => {
+        if (!homeSlideshowPaused) {
+            homeSlideshowIndex++;
+            renderHomeSlideshowFrame();
+        }
+    }, slideshowSpeed * 1000);
+}
+
+function toggleHomeSlideshow() {
+    homeSlideshowPaused = !homeSlideshowPaused;
+    homeSlideshowPause.textContent = homeSlideshowPaused ? '▶' : '⏸';
+}
+
+function closeHomeSlideshow() {
+    if (homeSlideshowTimer) clearInterval(homeSlideshowTimer);
+    homeSlideshowTimer = null;
+    homeSlideshow.classList.remove('open');
+    document.body.style.overflow = '';
 }
 
 function visibleIndexes() {
@@ -499,7 +556,6 @@ function startSlideshow() {
     stopSlideshow();
     slideshowPlay.textContent = '⏸';
     slideshowPlay.classList.add('playing');
-    slideshowSpeedEl.style.display = 'flex';
     slideshowTimer = setInterval(() => stepLightbox(1), slideshowSpeed * 1000);
 }
 
@@ -508,7 +564,6 @@ function stopSlideshow() {
     slideshowTimer = null;
     slideshowPlay.textContent = '▶';
     slideshowPlay.classList.remove('playing');
-    slideshowSpeedEl.style.display = 'none';
 }
 
 // ── Helpers ─────────────────────────────────────────────────
