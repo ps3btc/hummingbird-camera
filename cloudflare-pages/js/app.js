@@ -107,6 +107,11 @@ async function loadImages(append = false) {
         normalized.forEach((img, i) => gallery.appendChild(buildCard(img, images.length - normalized.length + i)));
         loadMoreEl.style.display = truncated ? 'block' : 'none';
         applyVisibility();
+        
+        // Auto-start home slideshow after first load
+        if (!append && images.length > 0) {
+            setTimeout(openHomeSlideshow, 500);
+        }
     } catch (err) {
         console.error('Failed to load images:', err);
         loadingEl.innerHTML = `<p>⚠️ Could not reach the Worker API.<br>
