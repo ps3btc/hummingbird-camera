@@ -68,11 +68,20 @@ class HeartbeatSender:
         """Send a single heartbeat to the Worker."""
         try:
             url = f"{Config.CLOUDFLARE_WORKER_URL}/heartbeat"
-            uptime_seconds = (datetime.now() - self.camera.stats['start_time']).total_seconds()
+            app_uptime_seconds = (datetime.now() - self.camera.stats['start_time']).total_seconds()
+            
+            # Get system uptime from /proc/uptime (Pi hardware uptime)
+            system_uptime_seconds = 0
+            try:
+                with open('/proc/uptime', 'r') as f:
+                    system_uptime_seconds = int(float(f.readline().split()[0]))
+            except Exception:
+                pass
             
             payload = {
                 'status': 'alive',
-                'uptime_seconds': int(uptime_seconds),
+                'app_uptime_seconds': int(app_uptime_seconds),
+                'system_uptime_seconds': system_uptime_seconds,
                 'captures': self.camera.stats['captures'],
                 'uploads': self.camera.stats['uploads'],
                 'detections': self.camera.stats['detections'],

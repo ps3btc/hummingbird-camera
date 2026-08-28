@@ -204,6 +204,12 @@ body {
     margin-top: 28px;
 }
 
+.status-badges {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
 .status-badge {
     display: inline-flex;
     align-items: center;

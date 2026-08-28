@@ -23,7 +23,7 @@
                     </div>
                 </div>
                 <div class="header-stats">
-                    <div class="stat-badge" id="storageBadge" title="R2 storage usage">
+                    <div class="stat-badge" id="storageBadge" title="Cloudflare R2 storage: shows how many images are stored out of the 20,000 file limit. When the limit is reached, the oldest images are automatically deleted.">
                         <span class="stat-icon">💾</span>
                         <span id="storageCount">--</span>
                     </div>
@@ -78,10 +78,16 @@
         <section class="pi-status" id="piStatus">
             <div class="section-heading">
                 <h2>Raspberry Pi Status</h2>
-                <span class="status-badge" id="statusBadge">
-                    <span class="status-dot" id="statusDot"></span>
-                    <span id="statusText">checking…</span>
-                </span>
+                <div class="status-badges">
+                    <span class="status-badge" id="piStatusBadge" title="Raspberry Pi hardware status">
+                        <span class="status-dot" id="piStatusDot"></span>
+                        <span>Pi: <span id="piStatusText">checking…</span></span>
+                    </span>
+                    <span class="status-badge" id="appStatusBadge" title="Hummingbird camera application status">
+                        <span class="status-dot" id="appStatusDot"></span>
+                        <span>App: <span id="appStatusText">checking…</span></span>
+                    </span>
+                </div>
             </div>
             <div class="charts-row">
                 <div class="chart-card">
@@ -92,16 +98,20 @@
                     <h3>Details</h3>
                     <div class="status-info">
                         <div class="status-row">
-                            <span class="status-label">Last Seen</span>
+                            <span class="status-label">Last Heartbeat</span>
                             <span class="status-value" id="lastSeen">–</span>
                         </div>
                         <div class="status-row">
-                            <span class="status-label">Overall Uptime</span>
-                            <span class="status-value" id="overallUptime">–</span>
+                            <span class="status-label">Pi Uptime</span>
+                            <span class="status-value" id="piUptime">–</span>
                         </div>
                         <div class="status-row">
-                            <span class="status-label">Heartbeats (21d)</span>
-                            <span class="status-value" id="heartbeatCount">–</span>
+                            <span class="status-label">App Uptime</span>
+                            <span class="status-value" id="appUptime">–</span>
+                        </div>
+                        <div class="status-row">
+                            <span class="status-label">Overall Uptime (21d)</span>
+                            <span class="status-value" id="overallUptime">–</span>
                         </div>
                     </div>
                 </div>

@@ -337,15 +337,28 @@ async function handleStatus(env, corsHeaders) {
     'SELECT timestamp, status, details FROM heartbeats ORDER BY id DESC LIMIT 1'
   ).first();
   
-  // Determine if Pi is up (heartbeat within last 15 minutes)
-  let piStatus = 'offline';
+  // Determine if app is running (heartbeat within last 15 minutes)
+  let appStatus = 'offline';
   let lastSeen = null;
+  let appUptimeSeconds = 0;
+  let systemUptimeSeconds = 0;
+  
   if (latest) {
     lastSeen = latest.timestamp;
     const lastTime = new Date(latest.timestamp).getTime();
     const now = Date.now();
+    
+    // Parse details to get uptime info
+    let details = {};
+    try {
+      details = JSON.parse(latest.details || '{}');
+    } catch (e) { /* ignore */ }
+    
+    appUptimeSeconds = details.app_uptime_seconds || 0;
+    systemUptimeSeconds = details.system_uptime_seconds || 0;
+    
     if (now - lastTime < 15 * 60 * 1000) {
-      piStatus = 'online';
+      appStatus = 'online';
     }
   }
   
@@ -379,8 +392,10 @@ async function handleStatus(env, corsHeaders) {
   const overallUptime = Math.min(100, Math.round((totalActual / totalExpected) * 100));
   
   return Response.json({
-    status: piStatus,
+    status: appStatus,
     lastSeen: lastSeen,
+    appUptimeSeconds: appUptimeSeconds,
+    systemUptimeSeconds: systemUptimeSeconds,
     overallUptime: overallUptime,
     dailyUptime: dailyUptime,
     heartbeatCount: results.length,
