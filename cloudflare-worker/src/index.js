@@ -56,7 +56,7 @@ export default {
         return handleDeleteOldest(env, corsHeaders);
       }
       
-      if (path === '/image/' && request.method === 'GET') {
+      if (path.startsWith('/image/') && request.method === 'GET') {
         return handleGetImage(request, env, corsHeaders);
       }
       
