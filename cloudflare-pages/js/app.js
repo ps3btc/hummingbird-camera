@@ -198,9 +198,10 @@ async function loadStatus() {
     }
     
     try {
-        const res = await fetch(`${WORKER_URL}/status`);
+        const res = await fetch(`${WORKER_URL}/status?_=${Date.now()}`, { cache: 'no-store' });
         if (!res.ok) throw new Error(`status ${res.status}`);
         const data = await res.json();
+        console.log('Status response:', data);
         
         // App status: based on heartbeat (app sends heartbeats)
         if (data.status === 'online') {
