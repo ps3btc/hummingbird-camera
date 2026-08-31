@@ -191,6 +191,12 @@ async function loadStatus() {
     const appUptime = document.getElementById('appUptime');
     const overallUptime = document.getElementById('overallUptime');
     
+    // Null checks to prevent errors if elements don't exist
+    if (!piStatusDot || !appStatusDot) {
+        console.warn('Status elements not found');
+        return;
+    }
+    
     try {
         const res = await fetch(`${WORKER_URL}/status`);
         if (!res.ok) throw new Error(`status ${res.status}`);
@@ -200,11 +206,11 @@ async function loadStatus() {
         if (data.status === 'online') {
             appStatusDot.classList.add('online');
             appStatusDot.classList.remove('offline');
-            appStatusText.textContent = 'Running';
+            if (appStatusText) appStatusText.textContent = 'Running';
         } else {
             appStatusDot.classList.add('offline');
             appStatusDot.classList.remove('online');
-            appStatusText.textContent = 'Stopped';
+            if (appStatusText) appStatusText.textContent = 'Stopped';
         }
         
         // Pi status: if we have system uptime, Pi is online
@@ -212,42 +218,42 @@ async function loadStatus() {
         if (data.systemUptimeSeconds > 0) {
             piStatusDot.classList.add('online');
             piStatusDot.classList.remove('offline');
-            piStatusText.textContent = 'Online';
+            if (piStatusText) piStatusText.textContent = 'Online';
         } else if (data.status === 'online') {
             // App is sending heartbeats, so Pi must be online
             piStatusDot.classList.add('online');
             piStatusDot.classList.remove('offline');
-            piStatusText.textContent = 'Online';
+            if (piStatusText) piStatusText.textContent = 'Online';
         } else {
             // No heartbeats, no system uptime info - Pi might be offline
             piStatusDot.classList.add('offline');
             piStatusDot.classList.remove('online');
-            piStatusText.textContent = 'Offline';
+            if (piStatusText) piStatusText.textContent = 'Offline';
         }
         
         // Update details
-        if (data.lastSeen) {
+        if (data.lastSeen && lastSeen) {
             lastSeen.textContent = formatTimestamp(data.lastSeen, true);
         }
         
         // Format uptimes
-        if (data.systemUptimeSeconds > 0) {
+        if (data.systemUptimeSeconds > 0 && piUptime) {
             piUptime.textContent = formatUptime(data.systemUptimeSeconds);
         }
-        if (data.appUptimeSeconds > 0) {
+        if (data.appUptimeSeconds > 0 && appUptime) {
             appUptime.textContent = formatUptime(data.appUptimeSeconds);
         }
         
-        overallUptime.textContent = `${data.overallUptime}%`;
+        if (overallUptime) overallUptime.textContent = `${data.overallUptime}%`;
         
         // Draw uptime chart
         drawUptimeChart(data.dailyUptime || {});
     } catch (err) {
         console.error('Failed to load status:', err);
-        piStatusDot.classList.add('offline');
-        piStatusText.textContent = 'Unknown';
-        appStatusDot.classList.add('offline');
-        appStatusText.textContent = 'Unknown';
+        if (piStatusDot) piStatusDot.classList.add('offline');
+        if (piStatusText) piStatusText.textContent = 'Unknown';
+        if (appStatusDot) appStatusDot.classList.add('offline');
+        if (appStatusText) appStatusText.textContent = 'Unknown';
     }
 }
 
