@@ -247,6 +247,18 @@ async function loadStatus() {
         
         if (overallUptime) overallUptime.textContent = `${data.overallUptime}%`;
         
+        // Update detection mode
+        const detectionMode = document.getElementById('detectionMode');
+        if (detectionMode) {
+            if (data.motionOnly) {
+                detectionMode.textContent = 'Motion-only (no local AI)';
+                detectionMode.style.color = '#fbbf24'; // yellow warning
+            } else {
+                detectionMode.textContent = 'Local AI + OpenAI';
+                detectionMode.style.color = '#34d399'; // green
+            }
+        }
+        
         // Draw uptime chart
         drawUptimeChart(data.dailyUptime || {});
     } catch (err) {

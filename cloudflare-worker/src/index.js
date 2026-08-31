@@ -342,6 +342,7 @@ async function handleStatus(env, corsHeaders) {
   let lastSeen = null;
   let appUptimeSeconds = 0;
   let systemUptimeSeconds = 0;
+  let motionOnly = false;
   
   if (latest) {
     lastSeen = latest.timestamp;
@@ -356,6 +357,7 @@ async function handleStatus(env, corsHeaders) {
     
     appUptimeSeconds = details.app_uptime_seconds || 0;
     systemUptimeSeconds = details.system_uptime_seconds || 0;
+    motionOnly = details.motion_only === true;
     
     if (now - lastTime < 15 * 60 * 1000) {
       appStatus = 'online';
@@ -396,6 +398,7 @@ async function handleStatus(env, corsHeaders) {
     lastSeen: lastSeen,
     appUptimeSeconds: appUptimeSeconds,
     systemUptimeSeconds: systemUptimeSeconds,
+    motionOnly: motionOnly,
     overallUptime: overallUptime,
     dailyUptime: dailyUptime,
     heartbeatCount: results.length,
