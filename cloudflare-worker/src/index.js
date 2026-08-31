@@ -68,6 +68,10 @@ export default {
         return handleStatus(env, corsHeaders);
       }
       
+      if (path === '/clear' && request.method === 'DELETE') {
+        return handleClearAll(env, corsHeaders);
+      }
+      
       return Response.json({ error: 'Not found' }, { status: 404, headers: corsHeaders });
       
     } catch (error) {
@@ -403,4 +407,40 @@ async function handleStatus(env, corsHeaders) {
     dailyUptime: dailyUptime,
     heartbeatCount: results.length,
   }, { headers: corsHeaders });
+}
+
+/**
+ * Delete all objects from R2 bucket
+ */
+async function handleClearAll(env, corsHeaders) {
+  try {
+    let deleted = 0;
+    const batchSize = 50;
+    
+    // List and delete in batches
+    while (true) {
+      const listed = await env.BUCKET.list({ limit: batchSize });
+      
+      if (!listed.objects || listed.objects.length === 0) {
+        break;
+      }
+      
+      // Delete this batch sequentially
+      for (const obj of listed.objects) {
+        await env.BUCKET.delete(obj.key);
+        deleted++;
+      }
+    }
+    
+    return Response.json({ 
+      success: true, 
+      deleted: deleted,
+      message: `Deleted ${deleted} objects from R2`
+    }, { headers: corsHeaders });
+  } catch (error) {
+    return Response.json({ 
+      error: 'Clear failed', 
+      message: error.message 
+    }, { status: 500, headers: corsHeaders });
+  }
 }
