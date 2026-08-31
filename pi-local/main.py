@@ -281,7 +281,18 @@ class HummingbirdCamera:
                 
                 # Process detections
                 
-                if has_any_object:
+                # Determine if we should upload to R2
+                # If OpenAI is enabled, only upload if OpenAI confirmed the detection
+                # If OpenAI is disabled, upload if local model detected something
+                should_upload = False
+                if self.openai:
+                    # OpenAI mode: only upload if OpenAI confirmed
+                    should_upload = has_any_object and openai_result and openai_result.get('detections')
+                else:
+                    # Local-only mode: upload if local model detected something
+                    should_upload = has_any_object
+                
+                if should_upload:
                     self.stats['detections'] += 1
                     self.stats['last_detection'] = datetime.now().isoformat()
                     
@@ -315,8 +326,8 @@ class HummingbirdCamera:
                                 if name != 'person':
                                     max_animal_conf = max(max_animal_conf, det.get('confidence', 0))
                             
-                            # Email threshold: 99% for local-only, 80% if OpenAI confirmed
-                            email_threshold = 0.80 if openai_result else 0.99
+                            # Email threshold: 80% since OpenAI confirmed
+                            email_threshold = 0.80
                             
                             if max_animal_conf >= email_threshold:
                                 self.notifier.send_alert(
@@ -326,6 +337,10 @@ class HummingbirdCamera:
                                     detection_result['has_animal']
                                 )
                                 self.stats['alerts'] += 1
+                elif has_any_object and self.openai and (not openai_result or not openai_result.get('detections')):
+                    # Local model detected something but OpenAI didn't confirm
+                    # Image stays on Pi, not uploaded to R2
+                    logger.info("OpenAI did not confirm detection — image kept on Pi only")
                 
                 # Write status file for dashboard
                 self._write_status_file()
