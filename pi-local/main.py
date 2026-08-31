@@ -132,6 +132,10 @@ class HummingbirdCamera:
         # Motion-only mode (when no AI model could be loaded)
         self.motion_only = False
         
+        # For image similarity check (to skip duplicate OpenAI calls)
+        self.prev_histogram = None
+        self.SIMILARITY_THRESHOLD = 0.92  # 92% similar = skip OpenAI
+        
         # Signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -217,6 +221,27 @@ class HummingbirdCamera:
             return '+'.join(types)
         return 'unknown'
     
+    def _compute_histogram(self, frame):
+        """Compute color histogram for similarity comparison."""
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        hist = cv2.calcHist([hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
+        cv2.normalize(hist, hist)
+        return hist
+    
+    def _is_similar_to_previous(self, frame):
+        """Check if frame is too similar to previous frame (likely duplicate)."""
+        if self.prev_histogram is None:
+            return False
+        
+        current_hist = self._compute_histogram(frame)
+        similarity = cv2.compareHist(self.prev_histogram, current_hist, cv2.HISTCMP_CORREL)
+        
+        return similarity > self.SIMILARITY_THRESHOLD
+    
+    def _update_previous_histogram(self, frame):
+        """Store current frame's histogram for next comparison."""
+        self.prev_histogram = self._compute_histogram(frame)
+    
     def run(self):
         """Main processing loop."""
         logger.info("Starting main processing loop...")
@@ -272,26 +297,32 @@ class HummingbirdCamera:
                     # OpenAI verification: if local model detected something, verify with GPT-4o-mini
                     openai_result = None
                     if has_any_object and self.openai:
-                        self.stats['openai_calls'] += 1
-                        openai_result = self.openai.analyze(filepath)
-                        
-                        # Use OpenAI results if it returned detections
-                        if openai_result and openai_result.get('detections'):
-                            detection_result = {
-                                'detections': openai_result['detections'],
-                                'has_bird': openai_result['has_bird'],
-                                'has_animal': openai_result['has_animal'],
-                                'has_human': openai_result['has_human'],
-                                'inference_ms': openai_result['inference_ms']
-                            }
-                            logger.info(
-                                f"OpenAI verified: {len(openai_result['detections'])} objects | "
-                                f"{openai_result.get('scene_description', '')[:80]}"
-                            )
-                        elif openai_result and not openai_result.get('detections'):
-                            # OpenAI saw nothing — likely a false positive from local model
-                            logger.info("OpenAI found nothing — treating as false positive")
-                            has_any_object = False
+                        # Check if image is too similar to previous (skip OpenAI to save costs)
+                        if self._is_similar_to_previous(frame):
+                            logger.info("Image too similar to previous — skipping OpenAI to save costs")
+                            self._update_previous_histogram(frame)
+                        else:
+                            self.stats['openai_calls'] += 1
+                            openai_result = self.openai.analyze(filepath)
+                            self._update_previous_histogram(frame)
+                            
+                            # Use OpenAI results if it returned detections
+                            if openai_result and openai_result.get('detections'):
+                                detection_result = {
+                                    'detections': openai_result['detections'],
+                                    'has_bird': openai_result['has_bird'],
+                                    'has_animal': openai_result['has_animal'],
+                                    'has_human': openai_result['has_human'],
+                                    'inference_ms': openai_result['inference_ms']
+                                }
+                                logger.info(
+                                    f"OpenAI verified: {len(openai_result['detections'])} objects | "
+                                    f"{openai_result.get('scene_description', '')[:80]}"
+                                )
+                            elif openai_result and not openai_result.get('detections'):
+                                # OpenAI saw nothing — likely a false positive from local model
+                                logger.info("OpenAI found nothing — treating as false positive")
+                                has_any_object = False
                 
                 # Process detections
                 
