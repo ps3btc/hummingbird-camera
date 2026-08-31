@@ -236,6 +236,11 @@ class HummingbirdCamera:
                     continue
                 
                 filepath, frame = result
+                
+                # Rotate 180° (camera is mounted upside down)
+                frame = cv2.rotate(frame, cv2.ROTATE_180)
+                cv2.imwrite(filepath, frame)
+                
                 frame_count += 1
                 self.stats['captures'] += 1
                 self.stats['last_capture'] = datetime.now().isoformat()
