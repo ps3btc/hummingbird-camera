@@ -17,6 +17,9 @@ from app.openai_detector import OpenAIVisionDetector
 from app.uploader import CloudflareUploader
 from app.notifier import MailjetNotifier
 
+# Ensure logs directory exists before setting up logging
+Config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
