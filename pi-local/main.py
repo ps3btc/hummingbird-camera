@@ -255,6 +255,15 @@ class HummingbirdCamera:
                     detection_result = self.detector.detect(frame)
                     has_any_object = len(detection_result['detections']) > 0
                     
+                    # Log local detection results before OpenAI
+                    if has_any_object:
+                        local_summary = []
+                        for det in detection_result['detections']:
+                            name = det.get('class_name', 'unknown')
+                            conf = det.get('confidence', 0)
+                            local_summary.append(f"{name} {conf*100:.1f}%")
+                        logger.info(f"Local detection: {', '.join(local_summary)} — sending to OpenAI for verification")
+                    
                     # OpenAI verification: if local model detected something, verify with GPT-4o-mini
                     openai_result = None
                     if has_any_object and self.openai:
