@@ -35,6 +35,7 @@ logger = logging.getLogger('main')
 STATUS_FILE = Config.BASE_DIR / 'status.json'
 
 HEARTBEAT_INTERVAL = 60  # 1 minute
+MAX_LOCAL_CAPTURES = 100  # Keep only the most recent local captures on disk
 
 
 class HeartbeatSender:
@@ -220,6 +221,35 @@ class HummingbirdCamera:
             types = [m[1] for m in self.detector.models]
             return '+'.join(types)
         return 'unknown'
+
+    def _cleanup_old_captures(self):
+        """Delete oldest local captures, keeping only the most recent MAX_LOCAL_CAPTURES."""
+        try:
+            captures_dir = Config.CAPTURES_DIR
+            if not captures_dir.exists():
+                return
+
+            files = sorted(
+                captures_dir.glob('*.jpg'),
+                key=lambda f: f.stat().st_mtime,
+                reverse=True,
+            )
+
+            if len(files) <= MAX_LOCAL_CAPTURES:
+                return
+
+            deleted = 0
+            for old_file in files[MAX_LOCAL_CAPTURES:]:
+                try:
+                    old_file.unlink()
+                    deleted += 1
+                except Exception as e:
+                    logger.warning(f"Failed to delete old capture {old_file.name}: {e}")
+
+            if deleted > 0:
+                logger.info(f"Cleaned up {deleted} old captures (keeping {MAX_LOCAL_CAPTURES})")
+        except Exception as e:
+            logger.error(f"Failed to cleanup old captures: {e}")
     
     def _compute_histogram(self, frame):
         """Compute color histogram for similarity comparison."""
@@ -261,11 +291,12 @@ class HummingbirdCamera:
                     continue
                 
                 filepath, frame = result
-                
-                # Rotate 180° (camera is mounted upside down)
-                frame = cv2.rotate(frame, cv2.ROTATE_180)
+
                 cv2.imwrite(filepath, frame)
-                
+
+                # Prune old captures to keep disk usage bounded
+                self._cleanup_old_captures()
+
                 frame_count += 1
                 self.stats['captures'] += 1
                 self.stats['last_capture'] = datetime.now().isoformat()
