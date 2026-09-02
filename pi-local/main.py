@@ -136,6 +136,10 @@ class HummingbirdCamera:
         # For image similarity check (to skip duplicate OpenAI calls)
         self.prev_histogram = None
         self.SIMILARITY_THRESHOLD = 0.92  # 92% similar = skip OpenAI
+        # Track whether the last OpenAI-verified frame had a real bird/animal/human.
+        # If it did, never skip the next frame on similarity alone — the bird may
+        # still be there and we must not miss it.
+        self._prev_frame_had_detection = False
         
         # Signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -328,15 +332,35 @@ class HummingbirdCamera:
                     # OpenAI verification: if local model detected something, verify with GPT-4o-mini
                     openai_result = None
                     if has_any_object and self.openai:
-                        # Check if image is too similar to previous (skip OpenAI to save costs)
-                        if self._is_similar_to_previous(frame):
-                            logger.info("Image too similar to previous — skipping OpenAI to save costs")
+                        # Be smart: only skip on similarity if the previous frame was a
+                        # confirmed clear (no bird/animal/human). If the previous frame
+                        # had a real detection, always send — the subject may still be in
+                        # frame and we must not miss it.
+                        should_skip = (
+                            self._is_similar_to_previous(frame)
+                            and not self._prev_frame_had_detection
+                        )
+                        if should_skip:
+                            logger.info(
+                                "Image too similar to previous (which was a clear) — "
+                                "skipping OpenAI to save costs"
+                            )
                             self._update_previous_histogram(frame)
                         else:
                             self.stats['openai_calls'] += 1
                             openai_result = self.openai.analyze(filepath)
                             self._update_previous_histogram(frame)
-                            
+
+                            # Track whether this frame had a real detection so the next
+                            # similarity check knows whether it's safe to skip.
+                            self._prev_frame_had_detection = bool(
+                                openai_result and (
+                                    openai_result.get('has_bird')
+                                    or openai_result.get('has_animal')
+                                    or openai_result.get('has_human')
+                                )
+                            )
+
                             # Use OpenAI results if it returned detections
                             if openai_result and openai_result.get('detections'):
                                 detection_result = {
