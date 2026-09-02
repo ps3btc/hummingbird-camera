@@ -212,6 +212,55 @@
             margin-bottom: 8px;
         }
 
+        /* Toggle switch */
+        .toggle-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #12121a;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 28px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #3a3a4a;
+            border-radius: 28px;
+            transition: 0.3s;
+        }
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: #6c63ff;
+        }
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+        }
+        .toggle-switch input:disabled + .toggle-slider {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         @media (max-width: 640px) {
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
             .stat-value { font-size: 24px; }
@@ -267,6 +316,13 @@
                 <div class="info-row">
                     <span class="info-label">Last Detection</span>
                     <span class="info-value" id="infoLastDetection">--</span>
+                </div>
+                <div class="toggle-row">
+                    <span class="info-label">OpenAI Vision</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="openaiToggle" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
                 </div>
             </div>
         </div>
@@ -374,10 +430,36 @@
             };
         }
 
+        // OpenAI toggle
+        function setupOpenAIToggle() {
+            const toggle = document.getElementById('openaiToggle');
+            if (!toggle) return;
+
+            fetch('/api/config').then(r => r.json()).then(data => {
+                toggle.checked = data.openai_enabled;
+            }).catch(() => {});
+
+            toggle.addEventListener('change', async () => {
+                toggle.disabled = true;
+                try {
+                    await fetch('/api/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ openai_enabled: toggle.checked }),
+                    });
+                } catch {
+                    toggle.checked = !toggle.checked;
+                } finally {
+                    toggle.disabled = false;
+                }
+            });
+        }
+
         // Initialize
         updateStatus();
         loadCaptures();
         connectLogStream();
+        setupOpenAIToggle();
         setInterval(updateStatus, 3000);
         setInterval(loadCaptures, 10000);
     </script>

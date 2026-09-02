@@ -129,3 +129,30 @@ def api_log_stream():
             time.sleep(1)
 
     return Response(stream(), mimetype='text/event-stream')
+
+
+@app.route('/api/config')
+def api_config_get():
+    """Get OpenAI toggle state from Cloudflare Worker."""
+    import requests
+    try:
+        worker_url = f"{Config.CLOUDFLARE_WORKER_URL}/config"
+        resp = requests.get(worker_url, timeout=5)
+        return jsonify(resp.json())
+    except Exception as e:
+        logger.error(f"Failed to get config from worker: {e}")
+        return jsonify({'openai_enabled': True})
+
+
+@app.route('/api/config', methods=['POST'])
+def api_config_post():
+    """Set OpenAI toggle state via Cloudflare Worker."""
+    import requests
+    try:
+        data = json.loads(request.data)
+        worker_url = f"{Config.CLOUDFLARE_WORKER_URL}/config"
+        resp = requests.post(worker_url, json=data, timeout=5)
+        return jsonify(resp.json())
+    except Exception as e:
+        logger.error(f"Failed to set config on worker: {e}")
+        return jsonify({'error': str(e)}), 500
