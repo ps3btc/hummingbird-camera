@@ -65,13 +65,22 @@ An AI-powered, motion-triggered camera system for capturing hummingbirds and wil
   - OpenAI finds nothing → Treated as false positive, skipped
   - Animal/bird confirmed (no humans) → Send email alert via Mailjet
 - **Cloud Gallery**: Mobile-friendly web app with:
-  - Detection gallery with filter buttons (All/Birds/Animals/Humans)
-  - Category toggle switches (humans hidden by default)
+  - **Two simple tabs**: "All" (everything) and "Animals" (bird/animal detections only)
+  - OpenAI audit log entries integrated into "All" tab
   - Bounding box overlays on detected objects
   - AI verification badge for OpenAI-confirmed detections
   - Scene descriptions and behavior notes from GPT-4o-mini
   - Monthly and hourly visit frequency charts
   - Lightbox view with full detection details and AI analysis
+- **Smart Cleanup** (runs every 15 minutes):
+  - Automatically deletes images without bird/animal detections older than 15 minutes
+  - Images with bird or animal detections are NEVER deleted
+  - Keeps R2 bucket clean and focused on actual wildlife
+  - Manual trigger: `POST /cleanup` endpoint
+- **Email Alerts** (via Mailjet):
+  - Bird or animal detected → email with image link and detection details
+  - Camera app offline (no heartbeat for 15+ minutes) → alert email
+  - Sent from Cloudflare Worker (async, doesn't block uploads)
 - **Local Dashboard**: Real-time monitoring at http://192.168.1.252:8080
 - **FIFO Storage Management**: Automatically deletes oldest files when approaching 20,000 file limit
 - **Secure**: Worker API requires Bearer token authentication; all credentials in `.env`
@@ -324,10 +333,9 @@ https://hummingbird-gallery.pages.dev
 ```
 
 Features:
-- **Summary cards**: Total visits, bird visits, animal visits, human visits
+- **Two tabs**: "All" (shows everything including OpenAI audit log) and "Animals" (bird/animal detections only)
 - **Analytics charts**: Monthly visits (last 12 months) + hourly visits (24 hours)
-- **Filter buttons**: All / Birds / Animals / Humans
-- **Category toggles**: Independently show/hide Birds, Animals, Humans (humans hidden by default)
+- **Dashboard tab**: System status, uptime charts, cleanup stats
 - **Gallery cards**: Thumbnail, type badge, confidence score, timestamp, bounding box overlay, AI badge
 - **Lightbox**: Full-size view with detection chips, bbox overlays, scene descriptions, and AI analysis
 - **AI metadata**: Scene descriptions, behavior notes, and species identification from GPT-4o-mini
