@@ -90,14 +90,16 @@ async function handleUpload(request, env, corsHeaders) {
   const formData = await request.formData();
   const file = formData.get('file');
   const metadataStr = formData.get('metadata');
-  
+  const keyPrefix = (formData.get('key_prefix') || '').toString();
+
   if (!file) {
     return Response.json({ error: 'No file provided' }, { status: 400, headers: corsHeaders });
   }
-  
-  // Generate unique key with timestamp
+
+  // Generate unique key with timestamp. The optional key_prefix lets callers
+  // route uploads to a sub-namespace (e.g. "openai-log/" for the audit log).
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const key = `${timestamp}_${file.name}`;
+  const key = `${keyPrefix}${timestamp}_${file.name}`;
   
   // Parse metadata
   let metadata = {};
@@ -112,16 +114,22 @@ async function handleUpload(request, env, corsHeaders) {
   // Normalize detection metadata for gallery filtering and analytics.
   // R2 custom metadata values must be strings.
   const detections = Array.isArray(metadata.detections) ? metadata.detections.slice(0, 10) : [];
+  const logKind = metadata.log_kind || 'capture';
   let detectionType = 'motion';
-  if (metadata.has_bird) detectionType = 'bird';
+  if (logKind === 'openai') {
+    // Audit-log entries: don't piggyback on bird/animal/human detection_type,
+    // the "Other" tab filters by log_kind === 'openai' instead.
+    detectionType = 'openai-log';
+  } else if (metadata.has_bird) detectionType = 'bird';
   else if (metadata.has_human) detectionType = 'human';
   else if (metadata.has_animal) detectionType = 'animal';
-  
+
   // OpenAI vision metadata (if available)
   const openai = metadata.openai || {};
-  
+
   const customMetadata = {
     detection_type: detectionType,
+    log_kind: logKind,
     timestamp: metadata.timestamp || new Date().toISOString(),
     has_bird: metadata.has_bird ? 'true' : 'false',
     has_animal: metadata.has_animal ? 'true' : 'false',
@@ -133,6 +141,7 @@ async function handleUpload(request, env, corsHeaders) {
     scene_description: openai.scene_description || '',
     interesting: openai.interesting || '',
     ai_model: openai.model || 'local',
+    openai_response: openai ? JSON.stringify(openai) : '',
   };
   
   // Upload to R2
@@ -158,16 +167,17 @@ async function handleList(request, env, corsHeaders) {
   const url = new URL(request.url);
   const limit = parseInt(url.searchParams.get('limit') || '50');
   const cursor = url.searchParams.get('cursor');
-  
+  const prefix = url.searchParams.get('prefix') || '';
+
   const options = {
     limit: Math.min(limit, 100),
-    prefix: '',
+    prefix: prefix,
   };
-  
+
   if (cursor) {
     options.cursor = cursor;
   }
-  
+
   const listed = await env.BUCKET.list(options);
   
   // Format objects with metadata

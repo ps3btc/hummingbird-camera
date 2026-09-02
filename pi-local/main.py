@@ -127,8 +127,14 @@ class HummingbirdCamera:
             'alerts': 0,
             'detections': 0,
             'openai_calls': 0,
+            'openai_skipped': 0,
+            'openai_log_uploads': 0,
             'start_time': datetime.now()
         }
+        # Capped ring buffer of recent OpenAI calls (for status/dashboard).
+        # Each entry: {timestamp, filename, mode, local_detections, openai_result, skip_reason}
+        self.openai_log = []
+        self.OPENAI_LOG_MAX = 50
         
         # Motion-only mode (when no AI model could be loaded)
         self.motion_only = False
@@ -275,6 +281,41 @@ class HummingbirdCamera:
     def _update_previous_histogram(self, frame):
         """Store current frame's histogram for next comparison."""
         self.prev_histogram = self._compute_histogram(frame)
+
+    def _record_openai_decision(
+        self,
+        filepath,
+        openai_called,
+        openai_result,
+        skip_reason,
+        mode,
+        local_detections,
+    ):
+        """Append a structured entry to the in-memory OpenAI decision log.
+
+        Each entry captures the full decision context for one captured frame,
+        whether OpenAI was called or skipped (and why). Capped at OPENAI_LOG_MAX
+        entries so memory stays bounded.
+        """
+        try:
+            entry = {
+                'timestamp': datetime.now().isoformat(),
+                'filename': filepath.name,
+                'mode': mode,
+                'local_detections': local_detections,
+                'openai_called': openai_called,
+                'openai_result': openai_result,
+                'skip_reason': skip_reason,
+            }
+            self.openai_log.append(entry)
+            if len(self.openai_log) > self.OPENAI_LOG_MAX:
+                self.openai_log = self.openai_log[-self.OPENAI_LOG_MAX:]
+        except Exception as e:
+            logger.error(f"Failed to record openai decision: {e}")
+
+    def get_openai_log(self):
+        """Return a copy of the openai_log ring buffer, newest first."""
+        return list(reversed(self.openai_log))
     
     def run(self):
         """Main processing loop."""
@@ -305,7 +346,8 @@ class HummingbirdCamera:
                 self.stats['captures'] += 1
                 self.stats['last_capture'] = datetime.now().isoformat()
                 
-                # Run object detection (skip in motion-only mode)
+                # Run object detection (motion-only: skip local; otherwise: local first)
+                local_detections_summary = None
                 if self.motion_only:
                     detection_result = {
                         'detections': [],
@@ -315,87 +357,142 @@ class HummingbirdCamera:
                         'inference_ms': 0.0
                     }
                     has_any_object = True  # motion capture itself is the trigger
-                    openai_result = None
+                    logger.info(
+                        f"Capture #{self.stats['captures']} | mode=motion-only | "
+                        f"trigger=motion — will call OpenAI"
+                    )
                 else:
                     detection_result = self.detector.detect(frame)
                     has_any_object = len(detection_result['detections']) > 0
-                    
-                    # Log local detection results before OpenAI
+
                     if has_any_object:
-                        local_summary = []
+                        local_detections_summary = []
                         for det in detection_result['detections']:
                             name = det.get('class_name', 'unknown')
                             conf = det.get('confidence', 0)
-                            local_summary.append(f"{name} {conf*100:.1f}%")
-                        logger.info(f"Local detection: {', '.join(local_summary)} — sending to OpenAI for verification")
-                    
-                    # OpenAI verification: if local model detected something, verify with GPT-4o-mini
-                    openai_result = None
-                    if has_any_object and self.openai:
-                        # Be smart: only skip on similarity if the previous frame was a
-                        # confirmed clear (no bird/animal/human). If the previous frame
-                        # had a real detection, always send — the subject may still be in
-                        # frame and we must not miss it.
-                        should_skip = (
-                            self._is_similar_to_previous(frame)
-                            and not self._prev_frame_had_detection
+                            local_detections_summary.append(f"{name} {conf*100:.1f}%")
+                        logger.info(
+                            f"Capture #{self.stats['captures']} | mode=local+openai | "
+                            f"local detected: {', '.join(local_detections_summary)} — will call OpenAI"
                         )
-                        if should_skip:
-                            logger.info(
-                                "Image too similar to previous (which was a clear) — "
-                                "skipping OpenAI to save costs"
-                            )
-                            self._update_previous_histogram(frame)
-                        else:
-                            self.stats['openai_calls'] += 1
-                            openai_result = self.openai.analyze(filepath)
-                            self._update_previous_histogram(frame)
+                    else:
+                        logger.info(
+                            f"Capture #{self.stats['captures']} | mode=local+openai | "
+                            f"no local detection — will NOT call OpenAI"
+                        )
 
-                            # Track whether this frame had a real detection so the next
-                            # similarity check knows whether it's safe to skip.
-                            self._prev_frame_had_detection = bool(
-                                openai_result and (
-                                    openai_result.get('has_bird')
-                                    or openai_result.get('has_animal')
-                                    or openai_result.get('has_human')
-                                )
-                            )
+                # OpenAI verification: runs in BOTH motion-only and local-AI modes.
+                # Trigger: has_any_object (true if motion fired, or local model detected something)
+                openai_result = None
+                openai_called = False
+                skip_reason = None
 
-                            # Use OpenAI results if it returned detections
-                            if openai_result and openai_result.get('detections'):
-                                detection_result = {
-                                    'detections': openai_result['detections'],
-                                    'has_bird': openai_result['has_bird'],
-                                    'has_animal': openai_result['has_animal'],
-                                    'has_human': openai_result['has_human'],
-                                    'inference_ms': openai_result['inference_ms']
-                                }
-                                logger.info(
-                                    f"OpenAI verified: {len(openai_result['detections'])} objects | "
-                                    f"{openai_result.get('scene_description', '')[:80]}"
-                                )
-                            elif openai_result and not openai_result.get('detections'):
-                                # OpenAI saw nothing — likely a false positive from local model
-                                logger.info("OpenAI found nothing — treating as false positive")
-                                has_any_object = False
-                
-                # Process detections
-                
-                # Determine if we should upload to R2
-                # If OpenAI is enabled, only upload if OpenAI confirmed the detection
-                # If OpenAI is disabled, upload if local model detected something
-                should_upload = False
-                if self.openai:
-                    # OpenAI mode: only upload if OpenAI confirmed
-                    should_upload = has_any_object and openai_result and openai_result.get('detections')
+                if not self.openai:
+                    skip_reason = 'openai-disabled'
+                elif not has_any_object:
+                    skip_reason = 'no-detection'
                 else:
-                    # Local-only mode: upload if local model detected something
+                    # Be smart: only skip on similarity if the previous frame was a
+                    # confirmed clear (no bird/animal/human). If the previous frame
+                    # had a real detection, always send — the subject may still be in
+                    # frame and we must not miss it.
+                    is_similar = self._is_similar_to_previous(frame)
+                    should_skip = is_similar and not self._prev_frame_had_detection
+
+                    if should_skip:
+                        skip_reason = 'similar-to-previous-clear'
+                        self.stats['openai_skipped'] += 1
+                        logger.info(
+                            f"OpenAI | SKIPPED (saved call): {filepath.name} | "
+                            f"reason={skip_reason} | "
+                            f"prev_frame_had_detection={self._prev_frame_had_detection} | "
+                            f"total_skipped={self.stats['openai_skipped']}"
+                        )
+                        self._update_previous_histogram(frame)
+                    else:
+                        self.stats['openai_calls'] += 1
+                        openai_called = True
+                        reason_note = (
+                            "first capture"
+                            if self.prev_histogram is None
+                            else "frame differs from previous"
+                            if not is_similar
+                            else "prev had detection, must verify"
+                        )
+                        logger.info(
+                            f"OpenAI | CALLING #{self.stats['openai_calls']}: {filepath.name} | "
+                            f"reason={reason_note}"
+                        )
+                        openai_result = self.openai.analyze(filepath)
+                        self._update_previous_histogram(frame)
+
+                        # Track whether this frame had a real detection so the next
+                        # similarity check knows whether it's safe to skip.
+                        self._prev_frame_had_detection = bool(
+                            openai_result and (
+                                openai_result.get('has_bird')
+                                or openai_result.get('has_animal')
+                                or openai_result.get('has_human')
+                            )
+                        )
+
+                        # Log the response clearly
+                        if openai_result and openai_result.get('detections'):
+                            n = len(openai_result['detections'])
+                            logger.info(
+                                f"OpenAI | call #{self.stats['openai_calls']} RESULT: "
+                                f"{n} detection(s) | "
+                                f"bird={openai_result.get('has_bird')} "
+                                f"animal={openai_result.get('has_animal')} "
+                                f"human={openai_result.get('has_human')} | "
+                                f"scene='{openai_result.get('scene_description','')[:80]}'"
+                            )
+                            # Adopt OpenAI's verdict as the canonical detection_result
+                            detection_result = {
+                                'detections': openai_result['detections'],
+                                'has_bird': openai_result['has_bird'],
+                                'has_animal': openai_result['has_animal'],
+                                'has_human': openai_result['has_human'],
+                                'inference_ms': openai_result['inference_ms']
+                            }
+                        else:
+                            logger.info(
+                                f"OpenAI | call #{self.stats['openai_calls']} RESULT: "
+                                f"no detections (clear) | "
+                                f"scene='{(openai_result or {}).get('scene_description','')[:80]}'"
+                            )
+                            has_any_object = False
+
+                # Record this decision in the OpenAI log (whether called or skipped)
+                self._record_openai_decision(
+                    filepath=filepath,
+                    openai_called=openai_called,
+                    openai_result=openai_result,
+                    skip_reason=skip_reason,
+                    mode='motion-only' if self.motion_only else 'local+openai',
+                    local_detections=local_detections_summary,
+                )
+
+                # Determine if we should upload to R2
+                # - Regular gallery: only when OpenAI confirmed a real detection
+                #   (or, if OpenAI disabled, when local model detected something)
+                # - OpenAI log: every actual OpenAI call (so you can audit what was sent)
+                should_upload = False
+                should_upload_openai_log = openai_called
+
+                if self.openai:
+                    should_upload = (
+                        has_any_object
+                        and openai_result is not None
+                        and bool(openai_result.get('detections'))
+                    )
+                else:
                     should_upload = has_any_object
-                
+
                 if should_upload:
                     self.stats['detections'] += 1
                     self.stats['last_detection'] = datetime.now().isoformat()
-                    
+
                     # Build metadata for R2
                     metadata = {
                         'detections': detection_result['detections'],
@@ -404,7 +501,7 @@ class HummingbirdCamera:
                         'has_human': detection_result['has_human'],
                         'inference_ms': detection_result['inference_ms']
                     }
-                    
+
                     # Add OpenAI metadata if available
                     if openai_result:
                         metadata['openai'] = {
@@ -412,10 +509,10 @@ class HummingbirdCamera:
                             'interesting': openai_result.get('interesting', ''),
                             'model': Config.OPENAI_MODEL
                         }
-                    
+
                     if self.uploader.upload_image(filepath, metadata):
                         self.stats['uploads'] += 1
-                    
+
                     # Send email alert for animals/birds with high confidence
                     if detection_result['has_animal'] or detection_result['has_bird']:
                         if not detection_result['has_human']:
@@ -425,10 +522,10 @@ class HummingbirdCamera:
                                 name = det.get('class_name', '').lower()
                                 if name != 'person':
                                     max_animal_conf = max(max_animal_conf, det.get('confidence', 0))
-                            
+
                             # Email threshold: 80% since OpenAI confirmed
                             email_threshold = 0.80
-                            
+
                             if max_animal_conf >= email_threshold:
                                 self.notifier.send_alert(
                                     filepath,
@@ -439,8 +536,30 @@ class HummingbirdCamera:
                                 self.stats['alerts'] += 1
                 elif has_any_object and self.openai and (not openai_result or not openai_result.get('detections')):
                     # Local model detected something but OpenAI didn't confirm
-                    # Image stays on Pi, not uploaded to R2
-                    logger.info("OpenAI did not confirm detection — image kept on Pi only")
+                    # Image stays on Pi, not uploaded to R2 (but it WAS uploaded to openai-log)
+                    logger.info(
+                        f"Capture #{self.stats['captures']} | OpenAI did not confirm — "
+                        f"image kept on Pi only (already in openai-log)"
+                    )
+
+                # Upload every OpenAI call to the openai-log prefix for the Other tab
+                if should_upload_openai_log and openai_result is not None:
+                    if self.uploader.upload_to_openai_log(filepath, {
+                        'mode': 'motion-only' if self.motion_only else 'local+openai',
+                        'local_detections': local_detections_summary,
+                        'openai': {
+                            'scene_description': openai_result.get('scene_description', ''),
+                            'interesting': openai_result.get('interesting', ''),
+                            'has_bird': openai_result.get('has_bird', False),
+                            'has_animal': openai_result.get('has_animal', False),
+                            'has_human': openai_result.get('has_human', False),
+                            'detections': openai_result.get('detections', []),
+                            'model': Config.OPENAI_MODEL,
+                            'inference_ms': openai_result.get('inference_ms', 0),
+                            'call_number': self.stats['openai_calls'],
+                        }
+                    }):
+                        self.stats['openai_log_uploads'] += 1
                 
                 # Write status file for dashboard
                 self._write_status_file()

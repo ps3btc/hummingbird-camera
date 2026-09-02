@@ -36,43 +36,43 @@ class CloudflareUploader:
     def upload_image(self, image_path: Path, metadata: dict = None) -> bool:
         """
         Upload an image to Cloudflare R2.
-        
+
         Args:
             image_path: Path to the image file
             metadata: Optional metadata dict (detections, timestamp, etc.)
-        
+
         Returns:
             bool: True if upload successful
         """
         if not image_path.exists():
             logger.error(f"Image file not found: {image_path}")
             return False
-        
+
         try:
             # Check file count and enforce FIFO if needed
             if not self._check_and_enforce_limit():
                 logger.warning("Failed to enforce file limit")
                 return False
-            
+
             # Prepare upload
             with open(image_path, 'rb') as f:
                 files = {'file': (image_path.name, f, 'image/jpeg')}
-                
+
                 # Add metadata
                 if metadata is None:
                     metadata = {}
                 metadata['timestamp'] = datetime.now().isoformat()
                 metadata['filename'] = image_path.name
-                
+
                 data = {'metadata': json.dumps(metadata, cls=NumpyEncoder)}
-                
+
                 response = self.session.post(
                     f"{self.worker_url}/upload",
                     files=files,
                     data=data,
                     timeout=30
                 )
-            
+
             if response.status_code == 200:
                 result = response.json()
                 logger.info(f"Upload successful: {image_path.name} -> {result.get('key')}")
@@ -80,11 +80,68 @@ class CloudflareUploader:
             else:
                 logger.error(f"Upload failed: {response.status_code} - {response.text}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"Upload error: {e}")
             return False
-    
+
+    def upload_to_openai_log(self, image_path: Path, metadata: dict = None) -> bool:
+        """
+        Upload an image to the durable openai-log prefix in R2.
+
+        Used for the "Other" tab on the Cloudflare gallery. Stores every image
+        that was actually sent to OpenAI along with the full response, so the
+        user can audit what the model saw and what it returned.
+
+        Bypasses the FIFO file-count check so the log is never deleted by
+        background enforcement (caller is responsible for keeping the prefix
+        reasonably small by the natural cooldown/cooldown behavior of captures).
+
+        Returns:
+            bool: True if upload successful
+        """
+        if not image_path.exists():
+            logger.error(f"Image file not found: {image_path}")
+            return False
+
+        try:
+            with open(image_path, 'rb') as f:
+                files = {'file': (image_path.name, f, 'image/jpeg')}
+
+                if metadata is None:
+                    metadata = {}
+                metadata['timestamp'] = datetime.now().isoformat()
+                metadata['filename'] = image_path.name
+                metadata['log_kind'] = 'openai'
+
+                data = {
+                    'metadata': json.dumps(metadata, cls=NumpyEncoder),
+                    'key_prefix': 'openai-log/',
+                }
+
+                response = self.session.post(
+                    f"{self.worker_url}/upload",
+                    files=files,
+                    data=data,
+                    timeout=30,
+                )
+
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(
+                    f"OpenAI log upload: {image_path.name} -> {result.get('key')}"
+                )
+                return True
+            else:
+                logger.error(
+                    f"OpenAI log upload failed: {response.status_code} - {response.text}"
+                )
+                return False
+
+        except Exception as e:
+            logger.error(f"OpenAI log upload error: {e}")
+            return False
+
     def _check_and_enforce_limit(self) -> bool:
         """Check file count and delete oldest if approaching limit."""
         try:

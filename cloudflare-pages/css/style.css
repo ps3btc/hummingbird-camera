@@ -471,6 +471,62 @@ body {
 .card-species { font-size: 12px; color: var(--text-faint); font-style: italic; }
 .card-scene { font-size: 11px; color: var(--text-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* OpenAI log card variant (Other tab) — emphasize the model verdict */
+.card-openai-log { border-color: rgba(56, 189, 248, 0.35); }
+.card-openai-log .type-badge.openai-log { background: rgba(56, 189, 248, 0.88); color: #06121f; }
+
+.card-verdict-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.verdict-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+}
+.verdict-badge.match { background: rgba(52, 211, 153, 0.15); color: var(--bird); border-color: rgba(52, 211, 153, 0.35); }
+.verdict-badge.clear { background: rgba(148, 163, 184, 0.12); color: var(--motion); border-color: rgba(148, 163, 184, 0.28); }
+.verdict-badge.bird   { background: rgba(52, 211, 153, 0.18); color: var(--bird); border-color: rgba(52, 211, 153, 0.4); }
+.verdict-badge.animal { background: rgba(251, 191, 36, 0.18); color: var(--animal); border-color: rgba(251, 191, 36, 0.4); }
+.verdict-badge.human  { background: rgba(248, 113, 113, 0.18); color: var(--human); border-color: rgba(248, 113, 113, 0.4); }
+
+.card-scene-full {
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.4;
+    margin-top: 4px;
+    padding: 6px 8px;
+    background: rgba(56, 189, 248, 0.06);
+    border-left: 2px solid var(--accent);
+    border-radius: 4px;
+    word-break: break-word;
+}
+
+.card-interesting {
+    font-size: 11px;
+    color: var(--animal);
+    margin-top: 4px;
+    font-style: italic;
+}
+
+.card-mode-line {
+    font-size: 10px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 2px;
+}
+
 /* AI badge (OpenAI verified) */
 .ai-badge {
     position: absolute; top: 8px; right: 8px;
