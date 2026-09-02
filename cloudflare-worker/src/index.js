@@ -4,7 +4,7 @@
  */
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
     
@@ -38,7 +38,7 @@ export default {
       
       // Routes
       if (path === '/upload' && request.method === 'POST') {
-        return handleUpload(request, env, corsHeaders);
+        return handleUpload(request, env, ctx, corsHeaders);
       }
       
       if (path === '/list' && request.method === 'GET') {
@@ -85,6 +85,11 @@ export default {
         return handleGetCleanup(env, corsHeaders);
       }
 
+      if (path === '/cleanup' && request.method === 'POST') {
+        ctx.waitUntil(runCleanup(env));
+        return Response.json({ success: true, message: 'Cleanup started' }, { headers: corsHeaders });
+      }
+
       return Response.json({ error: 'Not found' }, { status: 404, headers: corsHeaders });
       
     } catch (error) {
@@ -97,8 +102,8 @@ export default {
 };
 
 /**
- * Cron trigger: runs every 6 hours to clean up images where OpenAI
- * confirmed no wildlife (no bird, animal, or human detected).
+ * Cron trigger: runs every 15 minutes to clean up images where no bird
+ * or animal was detected and the image is older than 15 minutes.
  */
 export const scheduled = {
   async scheduled(controller, env, ctx) {
@@ -107,7 +112,9 @@ export const scheduled = {
 };
 
 async function runCleanup(env) {
-  const now = new Date().toISOString();
+  const now = new Date();
+  const nowISO = now.toISOString();
+  const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
   let deleted = 0;
   let scanned = 0;
   let cursor = null;
@@ -125,10 +132,12 @@ async function runCleanup(env) {
       scanned++;
       const md = obj.customMetadata || {};
 
-      // Only delete if OpenAI was actually called (has openai_response)
-      // AND all three detection flags are false.
-      if (!md.openai_response) continue;
-      if (md.has_bird === 'true' || md.has_animal === 'true' || md.has_human === 'true') continue;
+      // Keep images where a bird or animal was detected
+      if (md.has_bird === 'true' || md.has_animal === 'true') continue;
+
+      // Only delete if older than 15 minutes
+      const uploaded = obj.uploaded;
+      if (uploaded && uploaded >= fifteenMinutesAgo) continue;
 
       await env.BUCKET.delete(obj.key);
       deleted++;
@@ -143,18 +152,52 @@ async function runCleanup(env) {
   ).run();
   await env.DB.prepare(
     'INSERT INTO cleanup_log (timestamp, deleted_count, scanned_count) VALUES (?, ?, ?)'
-  ).bind(now, deleted, scanned).run();
+  ).bind(nowISO, deleted, scanned).run();
 
   // Keep only last 10 cleanup records
   await env.DB.prepare(
     'DELETE FROM cleanup_log WHERE id NOT IN (SELECT id FROM cleanup_log ORDER BY id DESC LIMIT 10)'
   ).run();
+
+  // Check if camera app is offline (no heartbeat in last 15 minutes)
+  try {
+    const latest = await env.DB.prepare(
+      'SELECT timestamp FROM heartbeats ORDER BY id DESC LIMIT 1'
+    ).first();
+
+    if (latest) {
+      const lastTime = new Date(latest.timestamp).getTime();
+      const nowMs = Date.now();
+      const minutesAgo = (nowMs - lastTime) / 60000;
+
+      if (minutesAgo > 15) {
+        const subject = '⚠️ Hummingbird Camera App Offline';
+        const htmlBody = `
+          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #d32f2f;">Camera App Offline</h2>
+            <p>The hummingbird camera app has not sent a heartbeat for ${Math.round(minutesAgo)} minutes.</p>
+            <div style="background: #ffebee; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #d32f2f;">
+              <p style="margin: 5px 0;"><strong>Last Heartbeat:</strong> ${latest.timestamp}</p>
+              <p style="margin: 5px 0;"><strong>Time Offline:</strong> ${Math.round(minutesAgo)} minutes</p>
+            </div>
+            <p>Please check the Raspberry Pi and restart the camera app if needed.</p>
+            <p style="margin-top: 20px;">
+              <a href="https://hummingbird-gallery.pages.dev" style="display: inline-block; background: #d32f2f; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View Dashboard</a>
+            </p>
+          </div>
+        `;
+        await sendEmail(env, subject, htmlBody);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to check camera status:', e);
+  }
 }
 
 /**
  * Upload image to R2 with metadata
  */
-async function handleUpload(request, env, corsHeaders) {
+async function handleUpload(request, env, ctx, corsHeaders) {
   const formData = await request.formData();
   const file = formData.get('file');
   const metadataStr = formData.get('metadata');
@@ -233,7 +276,35 @@ async function handleUpload(request, env, corsHeaders) {
     },
     customMetadata: customMetadata,
   });
-  
+
+  // Send email alert if bird or animal detected (not for openai-log entries)
+  if (logKind !== 'openai' && (metadata.has_bird || metadata.has_animal)) {
+    const imageUrl = `https://hummingbird-gallery.pages.dev/image/${encodeURIComponent(key)}`;
+    const species = customMetadata.species || 'Unknown';
+    const detectionLabel = metadata.has_bird ? 'Bird' : 'Animal';
+    const subject = `🐦 ${detectionLabel} detected at hummingbird camera`;
+    const htmlBody = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #2e7d32;">${detectionLabel} Detected!</h2>
+        <p>A ${detectionLabel.toLowerCase()} was detected by your hummingbird camera.</p>
+        <div style="margin: 20px 0;">
+          <img src="${imageUrl}" alt="Detection" style="max-width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        </div>
+        <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <p style="margin: 5px 0;"><strong>Type:</strong> ${detectionLabel}</p>
+          <p style="margin: 5px 0;"><strong>Species:</strong> ${species}</p>
+          <p style="margin: 5px 0;"><strong>Time:</strong> ${customMetadata.timestamp}</p>
+          ${customMetadata.inference_ms ? `<p style="margin: 5px 0;"><strong>Inference:</strong> ${customMetadata.inference_ms}ms</p>` : ''}
+        </div>
+        <p style="margin-top: 20px;">
+          <a href="https://hummingbird-gallery.pages.dev" style="display: inline-block; background: #2e7d32; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">View in Gallery</a>
+        </p>
+      </div>
+    `;
+    // Send email asynchronously
+    ctx.waitUntil(sendEmail(env, subject, htmlBody));
+  }
+
   return Response.json({
     success: true,
     key: key,
@@ -248,11 +319,55 @@ async function handleUpload(request, env, corsHeaders) {
 async function handleList(request, env, corsHeaders) {
   const url = new URL(request.url);
   const limit = parseInt(url.searchParams.get('limit') || '50');
-  const cursor = url.searchParams.get('cursor');
   const prefix = url.searchParams.get('prefix') || '';
 
-  // R2's list() does not include httpMetadata/customMetadata by default —
-  // pass them in `include` or the gallery sees empty {} for every object.
+  // When filtering by prefix (e.g., openai-log/), fetch all matching objects,
+  // sort by timestamp descending, then return the requested page. This ensures
+  // the newest images appear first, even if there are 100+ objects.
+  if (prefix) {
+    const offset = parseInt(url.searchParams.get('offset') || '0');
+    const allObjects = [];
+    let cursor = null;
+
+    do {
+      const options = {
+        limit: 1000,
+        prefix: prefix,
+        include: ['httpMetadata', 'customMetadata'],
+      };
+      if (cursor) options.cursor = cursor;
+
+      const listed = await env.BUCKET.list(options);
+      allObjects.push(...listed.objects);
+      cursor = listed.cursor;
+    } while (cursor);
+
+    // Sort by timestamp descending (newest first)
+    allObjects.sort((a, b) => {
+      const tsA = a.customMetadata?.timestamp || a.uploaded.toISOString();
+      const tsB = b.customMetadata?.timestamp || b.uploaded.toISOString();
+      return new Date(tsB) - new Date(tsA);
+    });
+
+    // Paginate
+    const page = allObjects.slice(offset, offset + limit);
+    const objects = page.map(obj => ({
+      key: obj.key,
+      size: obj.size,
+      uploaded: obj.uploaded.toISOString(),
+      httpMetadata: obj.httpMetadata,
+      customMetadata: obj.customMetadata || {},
+    }));
+
+    return Response.json({
+      objects: objects,
+      truncated: offset + limit < allObjects.length,
+      nextOffset: offset + limit < allObjects.length ? offset + limit : null,
+    }, { headers: corsHeaders });
+  }
+
+  // No prefix: use cursor-based pagination (for the main gallery)
+  const cursor = url.searchParams.get('cursor');
   const options = {
     limit: Math.min(limit, 100),
     prefix: prefix,
@@ -264,7 +379,7 @@ async function handleList(request, env, corsHeaders) {
   }
 
   const listed = await env.BUCKET.list(options);
-  
+
   // Format objects with metadata, then reverse to show most recent first
   const objects = listed.objects.map(obj => ({
     key: obj.key,
@@ -273,7 +388,7 @@ async function handleList(request, env, corsHeaders) {
     httpMetadata: obj.httpMetadata,
     customMetadata: obj.customMetadata || {},
   })).reverse();
-  
+
   return Response.json({
     objects: objects,
     truncated: listed.truncated,
@@ -609,5 +724,47 @@ async function handleGetCleanup(env, corsHeaders) {
     }, { headers: corsHeaders });
   } catch (e) {
     return Response.json({ last_run: null, deleted: 0, scanned: 0 }, { headers: corsHeaders });
+  }
+}
+
+/**
+ * Send email via Mailjet API
+ */
+async function sendEmail(env, subject, htmlBody) {
+  if (!env.MAILJET_API_KEY || !env.MAILJET_SECRET_KEY) {
+    console.warn('Mailjet credentials not configured, skipping email');
+    return;
+  }
+
+  try {
+    const auth = btoa(`${env.MAILJET_API_KEY}:${env.MAILJET_SECRET_KEY}`);
+    const response = await fetch('https://api.mailjet.com/v3.1/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        Messages: [{
+          From: {
+            Email: 'alerts@loglinearexplorations.online',
+            Name: 'Hummingbird Camera',
+          },
+          To: [{
+            Email: 'hareesh.nagarajan@gmail.com',
+            Name: 'Hareesh',
+          }],
+          Subject: subject,
+          HTMLPart: htmlBody,
+        }],
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Mailjet API error:', error);
+    }
+  } catch (e) {
+    console.error('Failed to send email:', e);
   }
 }

@@ -53,13 +53,6 @@
                     <div class="status-card-value" id="appStatusTextTop">checking…</div>
                 </div>
             </div>
-            <div class="status-card led" id="openaiStatusCard">
-                <span class="led-dot" id="openaiStatusDot" aria-hidden="true"></span>
-                <div class="status-card-text">
-                    <div class="status-card-label">OpenAI Vision</div>
-                    <div class="status-card-value" id="openaiStatusText">checking…</div>
-                </div>
-            </div>
         </section>
 
         <!-- Cleanup annotation -->
@@ -70,12 +63,9 @@
         <!-- Controls: filter buttons -->
         <section class="controls">
             <div class="filter-bar" id="filterBar">
-                <button class="filter-btn" data-filter="dashboard">📊 Dashboard</button>
                 <button class="filter-btn active" data-filter="all">All</button>
-                <button class="filter-btn" data-filter="bird">🐦 Birds</button>
-                <button class="filter-btn" data-filter="animal">🦊 Animals</button>
-                <button class="filter-btn" data-filter="human">👤 Humans</button>
-                <button class="filter-btn" data-filter="other">🔍 Other</button>
+                <button class="filter-btn" data-filter="animals">🐾 Animals</button>
+                <button class="filter-btn" data-filter="dashboard">📊 Dashboard</button>
             </div>
             <button class="home-play-btn" id="homePlayBtn" title="Play all as video">▶ Play</button>
         </section>
@@ -132,13 +122,6 @@
                             <div class="status-row">
                                 <span class="status-label">Detection Mode</span>
                                 <span class="status-value" id="detectionMode">–</span>
-                            </div>
-                            <div class="status-row">
-                                <span class="status-label">OpenAI Vision</span>
-                                <label class="toggle-switch">
-                                    <input type="checkbox" id="openaiToggle" checked>
-                                    <span class="toggle-slider"></span>
-                                </label>
                             </div>
                         </div>
                     </div>

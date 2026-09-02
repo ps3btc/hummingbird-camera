@@ -25,12 +25,7 @@ let cursor = null;
 let truncated = false;
 let loading = false;
 
-// OpenAI audit log (Other tab) — separate list fetched with ?prefix=openai-log/
-let currentView = 'gallery';  // 'gallery' | 'openai-log'
-let openaiLogImages = [];
-let openaiLogCursor = null;
-let openaiLogTruncated = false;
-let openaiLogLoading = false;
+let currentView = 'all';  // 'all' | 'animals' | 'dashboard'
 
 let lightboxIndex = -1;
 let slideshowTimer = null;
@@ -38,9 +33,6 @@ let slideshowSpeed = 0.25;  // 250ms = 4 fps, like a video
 let homeSlideshowTimer = null;
 let homeSlideshowIndex = 0;
 let homeSlideshowPaused = false;
-
-// Category visibility toggles (default: birds + animals on, humans hidden, motion shown)
-const visible = { bird: true, animal: true, human: false, motion: true };
 
 // ── DOM ─────────────────────────────────────────────────────
 const gallery = document.getElementById('gallery');
@@ -72,7 +64,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupLightbox();
     setupHomeSlideshow();
     setupRefresh();
-    setupOpenAIToggle();
     loadImages();
     loadStorageCount();
     loadStats();
@@ -94,6 +85,18 @@ async function loadImages(append = false) {
         gallery.appendChild(loadingEl);
         emptyState.style.display = 'none';
         loadMoreEl.style.display = 'none';
+
+        // On first load, also fetch OpenAI log entries to merge into unified gallery
+        try {
+            const openaiRes = await fetch(`${WORKER_URL}/list?prefix=openai-log/&limit=1000&offset=0`);
+            if (openaiRes.ok) {
+                const openaiData = await openaiRes.json();
+                const openaiNormalized = (openaiData.objects || []).map(normalizeOpenAILogObject);
+                images = images.concat(openaiNormalized);
+            }
+        } catch (e) {
+            console.warn('Failed to load OpenAI log entries:', e);
+        }
     }
 
     try {
@@ -112,7 +115,6 @@ async function loadImages(append = false) {
         images = images.concat(normalized);
 
         // Sort all images by timestamp (newest first) to maintain consistent order
-        // across pagination, since R2 returns in lexicographic order per page
         images.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
         // Rebuild gallery from sorted array
@@ -129,58 +131,7 @@ async function loadImages(append = false) {
     }
 }
 
-// ── OpenAI audit log (Other tab) ────────────────────────────
-
-async function loadOpenAILog(append = false) {
-    if (openaiLogLoading) return;
-    openaiLogLoading = true;
-
-    if (!append) {
-        openaiLogImages = [];
-        openaiLogCursor = null;
-        gallery.innerHTML = '';
-        loadingEl.style.display = 'block';
-        gallery.appendChild(loadingEl);
-        emptyState.style.display = 'none';
-        loadMoreEl.style.display = 'none';
-    }
-
-    try {
-        const params = new URLSearchParams({
-            prefix: 'openai-log/',
-            limit: String(ITEMS_PER_PAGE),
-        });
-        if (append && openaiLogCursor) params.set('cursor', openaiLogCursor);
-
-        const res = await fetch(`${WORKER_URL}/list?${params}`);
-        if (!res.ok) throw new Error(`Worker returned ${res.status}`);
-        const data = await res.json();
-
-        loadingEl.style.display = 'none';
-        openaiLogCursor = data.cursor || null;
-        openaiLogTruncated = !!data.truncated;
-
-        const normalized = (data.objects || []).map(normalizeOpenAILogObject);
-        openaiLogImages = openaiLogImages.concat(normalized);
-
-        // Sort all images by timestamp (newest first) to maintain consistent order
-        openaiLogImages.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-        // Rebuild gallery from sorted array
-        gallery.innerHTML = '';
-        openaiLogImages.forEach((img, i) => {
-            gallery.appendChild(buildOpenAILogCard(img, i));
-        });
-        loadMoreEl.style.display = openaiLogTruncated ? 'block' : 'none';
-        applyVisibility();
-    } catch (err) {
-        console.error('Failed to load OpenAI log:', err);
-        loadingEl.innerHTML = `<p>⚠️ Could not reach the Worker API for the OpenAI log.<br>
-            <small>Set WORKER_URL in js/app.js to your deployed Worker URL.</small></p>`;
-    } finally {
-        openaiLogLoading = false;
-    }
-}
+// ── OpenAI audit log helpers ─────────────────────────────────
 
 function normalizeOpenAILogObject(obj) {
     const md = obj.customMetadata || {};
@@ -220,54 +171,9 @@ function normalizeOpenAILogObject(obj) {
     };
 }
 
-function buildOpenAILogCard(img, index) {
-    const card = document.createElement('div');
-    card.className = 'card card-openai-log';
-    card.dataset.index = index;
-    card.dataset.view = 'openai-log';
-
-    const matched = img.hasBird || img.hasAnimal || img.hasHuman;
-    const verdictBadge = matched
-        ? `<span class="verdict-badge match">✅ MATCH</span>`
-        : `<span class="verdict-badge clear">❌ CLEAR</span>`;
-
-    const categoryBadges = [
-        img.hasBird   && `<span class="verdict-badge bird">🐦 bird</span>`,
-        img.hasAnimal && `<span class="verdict-badge animal">🦊 animal</span>`,
-        img.hasHuman  && `<span class="verdict-badge human">👤 human</span>`,
-    ].filter(Boolean).join('');
-
-    const callNumber = img.callNumber != null ? ` · call #${img.callNumber}` : '';
-    const modeLine = `<div class="card-mode-line">${escapeHtml(img.mode)}${escapeHtml(callNumber)}</div>`;
-    const sceneBlock = img.sceneDescription
-        ? `<div class="card-scene-full">${escapeHtml(img.sceneDescription)}</div>` : '';
-    const interestingBlock = img.interesting
-        ? `<div class="card-interesting">✨ ${escapeHtml(img.interesting)}</div>` : '';
-    const localDetBlock = img.localDetections && img.localDetections.length
-        ? `<div class="card-mode-line">local: ${escapeHtml(img.localDetections.join(', '))}</div>` : '';
-
-    card.innerHTML = `
-        <div class="card-media">
-            <img loading="lazy" src="${img.url}" alt="OpenAI log capture">
-            <span class="type-badge openai-log">🔍 OpenAI</span>
-        </div>
-        <div class="card-info">
-            <div class="card-label">OpenAI audit log</div>
-            <div class="card-time">${formatTimestamp(img.timestamp)}</div>
-            <div class="card-verdict-row">${verdictBadge}${categoryBadges}</div>
-            ${sceneBlock}
-            ${interestingBlock}
-            ${modeLine}
-            ${localDetBlock}
-        </div>`;
-
-    card.addEventListener('click', () => openOpenAILogLightbox(index));
-    return card;
-}
-
 function openOpenAILogLightbox(index) {
-    const img = openaiLogImages[index];
-    if (!img) return;
+    const img = images[index];
+    if (!img || !img.openai) return;
     lightboxIndex = index;
     lightboxImage.src = img.url;
     lightboxBoxes.innerHTML = '';
@@ -584,6 +490,11 @@ function drawUptimeChart(dailyUptime) {
 // ── Cards & visibility ──────────────────────────────────────
 
 function buildCard(img, index) {
+    // Check if this is an OpenAI log entry
+    if (img.openai) {
+        return buildOpenAILogCardUnified(img, index);
+    }
+
     const card = document.createElement('div');
     card.className = 'card';
     card.dataset.index = index;
@@ -616,6 +527,58 @@ function buildCard(img, index) {
     return card;
 }
 
+function buildOpenAILogCardUnified(img, index) {
+    const card = document.createElement('div');
+    card.className = 'card card-openai-log';
+    card.dataset.index = index;
+
+    // Build categories for visibility filtering
+    const categories = [];
+    if (img.hasBird) categories.push('bird');
+    if (img.hasAnimal) categories.push('animal');
+    if (img.hasHuman) categories.push('human');
+    if (categories.length === 0) categories.push('motion');
+    card.dataset.categories = categories.join(',');
+
+    const matched = img.hasBird || img.hasAnimal || img.hasHuman;
+    const verdictBadge = matched
+        ? `<span class="verdict-badge match">✅ MATCH</span>`
+        : `<span class="verdict-badge clear">❌ CLEAR</span>`;
+
+    const categoryBadges = [
+        img.hasBird   && `<span class="verdict-badge bird">🐦 bird</span>`,
+        img.hasAnimal && `<span class="verdict-badge animal">🦊 animal</span>`,
+        img.hasHuman  && `<span class="verdict-badge human">👤 human</span>`,
+    ].filter(Boolean).join('');
+
+    const callNumber = img.callNumber != null ? ` · call #${img.callNumber}` : '';
+    const modeLine = `<div class="card-mode-line">${escapeHtml(img.mode)}${escapeHtml(callNumber)}</div>`;
+    const sceneBlock = img.sceneDescription
+        ? `<div class="card-scene-full">${escapeHtml(img.sceneDescription)}</div>` : '';
+    const interestingBlock = img.interesting
+        ? `<div class="card-interesting">✨ ${escapeHtml(img.interesting)}</div>` : '';
+    const localDetBlock = img.localDetections && img.localDetections.length
+        ? `<div class="card-mode-line">local: ${escapeHtml(img.localDetections.join(', '))}</div>` : '';
+
+    card.innerHTML = `
+        <div class="card-media">
+            <img loading="lazy" src="${img.url}" alt="OpenAI log capture">
+            <span class="type-badge openai-log">🔍 OpenAI</span>
+        </div>
+        <div class="card-info">
+            <div class="card-label">OpenAI audit log</div>
+            <div class="card-time">${formatTimestamp(img.timestamp)}</div>
+            <div class="card-verdict-row">${verdictBadge}${categoryBadges}</div>
+            ${sceneBlock}
+            ${interestingBlock}
+            ${modeLine}
+            ${localDetBlock}
+        </div>`;
+
+    card.addEventListener('click', () => openOpenAILogLightbox(index));
+    return card;
+}
+
 function renderBoxes(detections) {
     return detections.map(d => {
         if (!Array.isArray(d.bbox) || d.bbox.length !== 4) return '';
@@ -637,36 +600,13 @@ function renderBoxes(detections) {
 }
 
 function applyVisibility() {
-    if (currentView === 'openai-log') {
-        let shown = 0;
-        gallery.querySelectorAll('.card').forEach(card => {
-            const isOpenAILog = card.classList.contains('card-openai-log');
-            card.style.display = isOpenAILog ? '' : 'none';
-            if (isOpenAILog) shown++;
-        });
-        if (openaiLogImages.length > 0 && shown === 0) {
-            emptyState.style.display = 'block';
-            emptyState.querySelector('h2').textContent = 'No OpenAI calls yet';
-            emptyState.querySelector('p').textContent =
-                "The camera hasn't sent any captures to OpenAI yet (motion or detection events).";
-        } else if (openaiLogImages.length === 0) {
-            emptyState.style.display = 'none';
-        } else {
-            emptyState.style.display = 'none';
-        }
-        return;
-    }
-
     let shown = 0;
     gallery.querySelectorAll('.card').forEach(card => {
-        // Hide any openai-log cards in the gallery view (shouldn't be there,
-        // but be defensive if the user switched views mid-fetch).
-        if (card.classList.contains('card-openai-log')) {
-            card.style.display = 'none';
-            return;
+        let isVisible = true;
+        if (currentView === 'animals') {
+            const cats = card.dataset.categories ? card.dataset.categories.split(',') : [];
+            isVisible = cats.includes('bird') || cats.includes('animal');
         }
-        const cats = card.dataset.categories.split(',');
-        const isVisible = cats.some(c => visible[c]);
         card.style.display = isVisible ? '' : 'none';
         if (isVisible) shown++;
     });
@@ -679,44 +619,16 @@ function setupFilterButtons() {
     document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const filter = btn.dataset.filter;
-            if (filter === 'other') {
-                showView('openai-log');
-                if (openaiLogImages.length === 0) {
-                    loadOpenAILog();
-                } else {
-                    // Rebuild gallery from openaiLogImages to ensure correct cards
-                    // (gallery might contain regular image cards if switching from All/Birds/etc.)
-                    gallery.innerHTML = '';
-                    openaiLogImages.forEach((img, i) => {
-                        gallery.appendChild(buildOpenAILogCard(img, i));
-                    });
-                    applyVisibility();
-                }
-            } else if (filter === 'dashboard') {
+            if (filter === 'dashboard') {
                 showView('dashboard');
                 requestAnimationFrame(() => {
                     loadStats();
                     loadStatus();
                 });
             } else {
-                showView('gallery');
-                if (filter === 'all') {
-                    visible.bird = true;
-                    visible.animal = true;
-                    visible.human = false;
-                } else {
-                    visible.bird = filter === 'bird';
-                    visible.animal = filter === 'animal';
-                    visible.human = filter === 'human';
-                }
+                showView(filter);
                 if (images.length === 0) {
                     loadImages();
-                } else {
-                    // Rebuild gallery from images array to ensure correct cards
-                    // (gallery might contain OpenAI log cards if switching from Other view)
-                    gallery.innerHTML = '';
-                    images.forEach((img, i) => gallery.appendChild(buildCard(img, i)));
-                    applyVisibility();
                 }
             }
             syncFilterButtons();
@@ -726,101 +638,34 @@ function setupFilterButtons() {
 
 function showView(view) {
     currentView = view;
+    const isGallery = view === 'all' || view === 'animals';
     if (dashboardPanel) {
         dashboardPanel.style.display = view === 'dashboard' ? '' : 'none';
     }
-    const showGallery = view === 'gallery' || view === 'openai-log';
-    if (gallery) gallery.style.display = showGallery ? '' : 'none';
+    if (gallery) gallery.style.display = isGallery ? '' : 'none';
     if (loadMoreEl) loadMoreEl.style.display = 'none';
     if (emptyState) emptyState.style.display = 'none';
-    if (homePlayBtn) homePlayBtn.style.display = view === 'gallery' ? '' : 'none';
+    if (homePlayBtn) homePlayBtn.style.display = isGallery ? '' : 'none';
+    if (isGallery) applyVisibility();
 }
 
 function syncFilterButtons() {
     document.querySelectorAll('.filter-btn').forEach(btn => {
-        const f = btn.dataset.filter;
-        let active = false;
-        if (f === 'dashboard') {
-            active = currentView === 'dashboard';
-        } else if (f === 'other') {
-            active = currentView === 'openai-log';
-        } else if (currentView === 'gallery') {
-            if (f === 'all') active = visible.bird && visible.animal && !visible.human;
-            else if (f === 'bird') active = visible.bird && !visible.animal && !visible.human;
-            else if (f === 'animal') active = visible.animal && !visible.bird && !visible.human;
-            else if (f === 'human') active = visible.human && !visible.bird && !visible.animal;
-        }
-        btn.classList.toggle('active', active);
+        btn.classList.toggle('active', btn.dataset.filter === currentView);
     });
 }
 
 function setupRefresh() {
     refreshBtn.addEventListener('click', () => {
         refreshBtn.classList.add('spinning');
-        const promises = [loadStorageCount(), loadStats(), loadStatus()];
-        if (currentView === 'openai-log') {
-            promises.push(loadOpenAILog());
-        } else if (currentView === 'gallery') {
-            promises.push(loadImages());
-        }
+        const promises = [loadStorageCount(), loadStats(), loadStatus(), loadImages()];
         Promise.all(promises).finally(() => {
             setTimeout(() => refreshBtn.classList.remove('spinning'), 500);
         });
     });
     loadMoreBtn.addEventListener('click', () => {
-        if (currentView === 'openai-log') {
-            loadOpenAILog(true);
-        } else {
-            loadImages(true);
-        }
+        loadImages(true);
     });
-}
-
-function setupOpenAIToggle() {
-    const toggle = document.getElementById('openaiToggle');
-    const dot = document.getElementById('openaiStatusDot');
-    const text = document.getElementById('openaiStatusText');
-    const card = document.getElementById('openaiStatusCard');
-
-    function setOpenAIState(enabled) {
-        if (dot) {
-            dot.classList.toggle('online', enabled);
-            dot.classList.toggle('offline', !enabled);
-        }
-        if (card) {
-            card.classList.toggle('online', enabled);
-            card.classList.toggle('offline', !enabled);
-        }
-        if (text) text.textContent = enabled ? 'Enabled' : 'Disabled';
-    }
-
-    fetch(`${WORKER_URL}/config?_=${Date.now()}`, { cache: 'no-store' })
-        .then(res => res.json())
-        .then(data => {
-            setOpenAIState(data.openai_enabled);
-            if (toggle) toggle.checked = data.openai_enabled;
-        })
-        .catch(() => {
-            if (text) text.textContent = 'Unknown';
-        });
-
-    if (toggle) {
-        toggle.addEventListener('change', async () => {
-            toggle.disabled = true;
-            try {
-                await fetch(`${WORKER_URL}/config`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ openai_enabled: toggle.checked }),
-                });
-                setOpenAIState(toggle.checked);
-            } catch {
-                toggle.checked = !toggle.checked;
-            } finally {
-                toggle.disabled = false;
-            }
-        });
-    }
 }
 
 // ── Charts (pure canvas, no libraries) ──────────────────────
@@ -970,13 +815,11 @@ function openHomeSlideshow() {
 function renderHomeSlideshowFrame() {
     const idxs = visibleIndexes();
     if (idxs.length === 0) return;
-    const img = currentView === 'openai-log'
-        ? openaiLogImages[idxs[homeSlideshowIndex % idxs.length]]
-        : images[idxs[homeSlideshowIndex % idxs.length]];
+    const img = images[idxs[homeSlideshowIndex % idxs.length]];
     if (!img) return;
     homeSlideshowImg.src = img.url;
     const ts = formatTimestamp(img.timestamp, true);
-    if (currentView === 'openai-log') {
+    if (img.openai) {
         const matched = img.hasBird || img.hasAnimal || img.hasHuman;
         const verdict = matched ? 'MATCH' : 'CLEAR';
         const det = img.sceneDescription
@@ -1064,21 +907,17 @@ function renderLightbox() {
 }
 
 function stepLightbox(delta) {
-    if (currentView === 'openai-log') {
-        const idxs = visibleIndexes();
-        if (idxs.length === 0) return;
-        const pos = idxs.indexOf(lightboxIndex);
-        const next = pos === -1 ? 0 : (pos + delta + idxs.length) % idxs.length;
-        lightboxIndex = idxs[next];
-        openOpenAILogLightbox(lightboxIndex);
-        return;
-    }
     const idxs = visibleIndexes();
     if (idxs.length === 0) return;
     const pos = idxs.indexOf(lightboxIndex);
     const next = pos === -1 ? 0 : (pos + delta + idxs.length) % idxs.length;
     lightboxIndex = idxs[next];
-    renderLightbox();
+    const img = images[lightboxIndex];
+    if (img && img.openai) {
+        openOpenAILogLightbox(lightboxIndex);
+    } else {
+        renderLightbox();
+    }
 }
 
 function closeLightbox() {
