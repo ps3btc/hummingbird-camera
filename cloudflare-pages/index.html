@@ -57,75 +57,87 @@
             </div>
         </section>
 
-        <!-- Analytics -->
-        <section class="analytics" id="analytics">
-            <div class="section-heading">
-                <h2>Visit Frequency</h2>
-                <span class="section-note" id="analyticsNote">loading…</span>
-            </div>
-            <div class="charts-row">
-                <div class="chart-card">
-                    <h3>Visits per Month</h3>
-                    <div class="chart-wrap"><canvas id="monthlyChart"></canvas></div>
+        <!-- Dashboard Panel: Visit Frequency + Pi Status -->
+        <section class="dashboard-panel" id="dashboardPanel" style="display: none;">
+            <!-- Prominent Pi / App status cards at the very top -->
+            <div class="pi-status-top">
+                <div class="status-card" id="piStatusTopCard">
+                    <span class="status-dot big" id="piStatusDotTop"></span>
+                    <div class="status-card-text">
+                        <div class="status-card-label">Raspberry Pi</div>
+                        <div class="status-card-value" id="piStatusTextTop">checking…</div>
+                    </div>
                 </div>
-                <div class="chart-card">
-                    <h3>Visits by Hour of Day</h3>
-                    <div class="chart-wrap"><canvas id="hourlyChart"></canvas></div>
+                <div class="status-card" id="appStatusTopCard">
+                    <span class="status-dot big" id="appStatusDotTop"></span>
+                    <div class="status-card-text">
+                        <div class="status-card-label">Camera App</div>
+                        <div class="status-card-value" id="appStatusTextTop">checking…</div>
+                    </div>
                 </div>
             </div>
-        </section>
 
-        <!-- Pi Status & Uptime -->
-        <section class="pi-status" id="piStatus">
-            <div class="section-heading">
-                <h2>Raspberry Pi Status</h2>
-                <div class="status-badges">
-                    <span class="status-badge" id="piStatusBadge" title="Raspberry Pi hardware status">
-                        <span class="status-dot" id="piStatusDot"></span>
-                        <span>Pi: <span id="piStatusText">checking…</span></span>
-                    </span>
-                    <span class="status-badge" id="appStatusBadge" title="Hummingbird camera application status">
-                        <span class="status-dot" id="appStatusDot"></span>
-                        <span>App: <span id="appStatusText">checking…</span></span>
-                    </span>
+            <!-- Visit Frequency -->
+            <div class="analytics">
+                <div class="section-heading">
+                    <h2>Visit Frequency</h2>
+                    <span class="section-note" id="analyticsNote">loading…</span>
+                </div>
+                <div class="charts-row">
+                    <div class="chart-card">
+                        <h3>Visits per Month</h3>
+                        <div class="chart-wrap"><canvas id="monthlyChart"></canvas></div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Visits by Hour of Day</h3>
+                        <div class="chart-wrap"><canvas id="hourlyChart"></canvas></div>
+                    </div>
                 </div>
             </div>
-            <div class="charts-row">
-                <div class="chart-card">
-                    <h3>Uptime (Last 3 Weeks)</h3>
-                    <div class="chart-wrap"><canvas id="uptimeChart"></canvas></div>
+
+            <!-- Raspberry Pi Status details -->
+            <div class="pi-status">
+                <div class="section-heading">
+                    <h2>Raspberry Pi Status</h2>
                 </div>
-                <div class="chart-card status-details-card">
-                    <h3>Details</h3>
-                    <div class="status-info">
-                        <div class="status-row">
-                            <span class="status-label">Last Heartbeat</span>
-                            <span class="status-value" id="lastSeen">–</span>
-                        </div>
-                        <div class="status-row">
-                            <span class="status-label">Pi Uptime</span>
-                            <span class="status-value" id="piUptime">–</span>
-                        </div>
-                        <div class="status-row">
-                            <span class="status-label">App Uptime</span>
-                            <span class="status-value" id="appUptime">–</span>
-                        </div>
-                        <div class="status-row">
-                            <span class="status-label">Overall Uptime (21d)</span>
-                            <span class="status-value" id="overallUptime">–</span>
-                        </div>
-                        <div class="status-row">
-                            <span class="status-label">Detection Mode</span>
-                            <span class="status-value" id="detectionMode">–</span>
+                <div class="charts-row">
+                    <div class="chart-card">
+                        <h3>Uptime (Last 3 Weeks)</h3>
+                        <div class="chart-wrap"><canvas id="uptimeChart"></canvas></div>
+                    </div>
+                    <div class="chart-card status-details-card">
+                        <h3>Details</h3>
+                        <div class="status-info">
+                            <div class="status-row">
+                                <span class="status-label">Last Heartbeat</span>
+                                <span class="status-value" id="lastSeen">–</span>
+                            </div>
+                            <div class="status-row">
+                                <span class="status-label">Pi Uptime</span>
+                                <span class="status-value" id="piUptime">–</span>
+                            </div>
+                            <div class="status-row">
+                                <span class="status-label">App Uptime</span>
+                                <span class="status-value" id="appUptime">–</span>
+                            </div>
+                            <div class="status-row">
+                                <span class="status-label">Overall Uptime (21d)</span>
+                                <span class="status-value" id="overallUptime">–</span>
+                            </div>
+                            <div class="status-row">
+                                <span class="status-label">Detection Mode</span>
+                                <span class="status-value" id="detectionMode">–</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- Controls: filter buttons + category toggles -->
+        <!-- Controls: filter buttons -->
         <section class="controls">
             <div class="filter-bar" id="filterBar">
+                <button class="filter-btn" data-filter="dashboard">📊 Dashboard</button>
                 <button class="filter-btn active" data-filter="all">All</button>
                 <button class="filter-btn" data-filter="bird">🐦 Birds</button>
                 <button class="filter-btn" data-filter="animal">🦊 Animals</button>
@@ -133,23 +145,6 @@
                 <button class="filter-btn" data-filter="other">🔍 Other</button>
             </div>
             <button class="home-play-btn" id="homePlayBtn" title="Play all as video">▶ Play</button>
-            <div class="toggle-group" id="toggleGroup">
-                <label class="toggle" data-category="bird">
-                    <input type="checkbox" id="toggleBird" checked>
-                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                    <span class="toggle-label">Birds</span>
-                </label>
-                <label class="toggle" data-category="animal">
-                    <input type="checkbox" id="toggleAnimal" checked>
-                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                    <span class="toggle-label">Animals</span>
-                </label>
-                <label class="toggle" data-category="human">
-                    <input type="checkbox" id="toggleHuman">
-                    <span class="toggle-track"><span class="toggle-thumb"></span></span>
-                    <span class="toggle-label">Humans</span>
-                </label>
-            </div>
         </section>
 
         <!-- Gallery Grid -->

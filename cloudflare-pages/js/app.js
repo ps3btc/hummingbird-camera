@@ -63,15 +63,11 @@ const homeSlideshowImg = document.getElementById('homeSlideshowImg');
 const homeSlideshowClose = document.getElementById('homeSlideshowClose');
 const homeSlideshowPause = document.getElementById('homeSlideshowPause');
 const homeSlideshowInfo = document.getElementById('homeSlideshowInfo');
-const toggles = {
-    bird: document.getElementById('toggleBird'),
-    animal: document.getElementById('toggleAnimal'),
-    human: document.getElementById('toggleHuman'),
-};
+const dashboardPanel = document.getElementById('dashboardPanel');
+const homePlayBtnContainer = homePlayBtn && homePlayBtn.parentElement;
 
 // ── Init ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-    setupToggles();
     setupFilterButtons();
     setupLightbox();
     setupHomeSlideshow();
@@ -358,8 +354,13 @@ async function loadStats() {
         document.getElementById('humanVisits').textContent = data.byType.human || 0;
         analyticsNote.textContent = `${data.total} captures analyzed`;
 
-        drawMonthlyChart(data.monthly || {});
-        drawHourlyChart(data.hourly || []);
+        // Only draw charts when the dashboard is visible — otherwise the
+        // canvas dimensions are 0x0 (parent display:none) and the chart
+        // either renders nothing or Chart.js throws "Canvas is already in use".
+        if (dashboardPanel && dashboardPanel.style.display !== 'none') {
+            drawMonthlyChart(data.monthly || {});
+            drawHourlyChart(data.hourly || []);
+        }
     } catch (err) {
         console.error('Failed to load stats:', err);
         analyticsNote.textContent = 'analytics unavailable';
@@ -367,61 +368,73 @@ async function loadStats() {
 }
 
 async function loadStatus() {
-    const piStatusDot = document.getElementById('piStatusDot');
-    const piStatusText = document.getElementById('piStatusText');
-    const appStatusDot = document.getElementById('appStatusDot');
-    const appStatusText = document.getElementById('appStatusText');
+    const piStatusDot = document.getElementById('piStatusDotTop');
+    const piStatusText = document.getElementById('piStatusTextTop');
+    const piStatusCard = document.getElementById('piStatusTopCard');
+    const appStatusDot = document.getElementById('appStatusDotTop');
+    const appStatusText = document.getElementById('appStatusTextTop');
+    const appStatusCard = document.getElementById('appStatusTopCard');
     const lastSeen = document.getElementById('lastSeen');
     const piUptime = document.getElementById('piUptime');
     const appUptime = document.getElementById('appUptime');
     const overallUptime = document.getElementById('overallUptime');
-    
+
     // Null checks to prevent errors if elements don't exist
     if (!piStatusDot || !appStatusDot) {
         console.warn('Status elements not found');
         return;
     }
-    
+
+    function setPi(state, label) {
+        piStatusDot.classList.toggle('online', state === 'online');
+        piStatusDot.classList.toggle('offline', state === 'offline');
+        if (piStatusCard) {
+            piStatusCard.classList.toggle('online', state === 'online');
+            piStatusCard.classList.toggle('offline', state === 'offline');
+        }
+        if (piStatusText) piStatusText.textContent = label;
+    }
+
+    function setApp(state, label) {
+        appStatusDot.classList.toggle('online', state === 'online');
+        appStatusDot.classList.toggle('offline', state === 'offline');
+        if (appStatusCard) {
+            appStatusCard.classList.toggle('online', state === 'online');
+            appStatusCard.classList.toggle('offline', state === 'offline');
+        }
+        if (appStatusText) appStatusText.textContent = label;
+    }
+
     try {
         const res = await fetch(`${WORKER_URL}/status?_=${Date.now()}`, { cache: 'no-store' });
         if (!res.ok) throw new Error(`status ${res.status}`);
         const data = await res.json();
         console.log('Status response:', data);
-        
+
         // App status: based on heartbeat (app sends heartbeats)
         if (data.status === 'online') {
-            appStatusDot.classList.add('online');
-            appStatusDot.classList.remove('offline');
-            if (appStatusText) appStatusText.textContent = 'Running';
+            setApp('online', 'Running');
         } else {
-            appStatusDot.classList.add('offline');
-            appStatusDot.classList.remove('online');
-            if (appStatusText) appStatusText.textContent = 'Stopped';
+            setApp('offline', 'Stopped');
         }
-        
+
         // Pi status: if we have system uptime, Pi is online
         // (even if app stopped, Pi hardware is still up)
         if (data.systemUptimeSeconds > 0) {
-            piStatusDot.classList.add('online');
-            piStatusDot.classList.remove('offline');
-            if (piStatusText) piStatusText.textContent = 'Online';
+            setPi('online', 'Online');
         } else if (data.status === 'online') {
             // App is sending heartbeats, so Pi must be online
-            piStatusDot.classList.add('online');
-            piStatusDot.classList.remove('offline');
-            if (piStatusText) piStatusText.textContent = 'Online';
+            setPi('online', 'Online');
         } else {
             // No heartbeats, no system uptime info - Pi might be offline
-            piStatusDot.classList.add('offline');
-            piStatusDot.classList.remove('online');
-            if (piStatusText) piStatusText.textContent = 'Offline';
+            setPi('offline', 'Offline');
         }
-        
+
         // Update details
         if (data.lastSeen && lastSeen) {
             lastSeen.textContent = formatTimestamp(data.lastSeen, true);
         }
-        
+
         // Format uptimes
         if (data.systemUptimeSeconds > 0 && piUptime) {
             piUptime.textContent = formatUptime(data.systemUptimeSeconds);
@@ -429,9 +442,9 @@ async function loadStatus() {
         if (data.appUptimeSeconds > 0 && appUptime) {
             appUptime.textContent = formatUptime(data.appUptimeSeconds);
         }
-        
+
         if (overallUptime) overallUptime.textContent = `${data.overallUptime}%`;
-        
+
         // Update detection mode
         const detectionMode = document.getElementById('detectionMode');
         if (detectionMode) {
@@ -443,15 +456,15 @@ async function loadStatus() {
                 detectionMode.style.color = '#34d399'; // green
             }
         }
-        
-        // Draw uptime chart
-        drawUptimeChart(data.dailyUptime || {});
+
+        // Draw uptime chart (only when dashboard visible — canvas must be laid out)
+        if (dashboardPanel && dashboardPanel.style.display !== 'none') {
+            drawUptimeChart(data.dailyUptime || {});
+        }
     } catch (err) {
         console.error('Failed to load status:', err);
-        if (piStatusDot) piStatusDot.classList.add('offline');
-        if (piStatusText) piStatusText.textContent = 'Unknown';
-        if (appStatusDot) appStatusDot.classList.add('offline');
-        if (appStatusText) appStatusText.textContent = 'Unknown';
+        setPi('offline', 'Unknown');
+        setApp('offline', 'Unknown');
     }
 }
 
@@ -468,10 +481,12 @@ function formatUptime(seconds) {
     return `${mins}m`;
 }
 
+let uptimeChartInstance = null;
+
 function drawUptimeChart(dailyUptime) {
     const ctx = document.getElementById('uptimeChart');
     if (!ctx) return;
-    
+
     // Sort dates and get last 21 days
     const dates = Object.keys(dailyUptime).sort();
     const labels = dates.map(d => {
@@ -479,15 +494,20 @@ function drawUptimeChart(dailyUptime) {
         return `${dt.getMonth() + 1}/${dt.getDate()}`;
     });
     const values = dates.map(d => dailyUptime[d]);
-    
+
     // Color bars by uptime percentage
     const colors = values.map(v => {
         if (v >= 95) return '#34d399'; // green
         if (v >= 80) return '#fbbf24'; // yellow
         return '#f87171'; // red
     });
-    
-    new Chart(ctx, {
+
+    if (uptimeChartInstance) {
+        uptimeChartInstance.destroy();
+        uptimeChartInstance = null;
+    }
+
+    uptimeChartInstance = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: labels,
@@ -619,39 +639,32 @@ function applyVisibility() {
 
 // ── Controls ────────────────────────────────────────────────
 
-function setupToggles() {
-    Object.entries(toggles).forEach(([category, input]) => {
-        input.addEventListener('change', () => {
-            visible[category] = input.checked;
-            applyVisibility();
-            syncFilterButtons();
-        });
-    });
-}
-
 function setupFilterButtons() {
     document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const filter = btn.dataset.filter;
             if (filter === 'other') {
-                // Switch to the OpenAI audit log view.
                 showView('openai-log');
                 if (currentView === 'openai-log' && openaiLogImages.length === 0) {
                     loadOpenAILog();
                 }
+            } else if (filter === 'dashboard') {
+                showView('dashboard');
+                requestAnimationFrame(() => {
+                    loadStats();
+                    loadStatus();
+                });
             } else {
-                // Switch back to the regular gallery view.
                 showView('gallery');
                 if (filter === 'all') {
-                    // All = birds + animals by default; humans only if already toggled on
                     visible.bird = true;
                     visible.animal = true;
+                    visible.human = false;
                 } else {
                     visible.bird = filter === 'bird';
                     visible.animal = filter === 'animal';
                     visible.human = filter === 'human';
                 }
-                Object.entries(toggles).forEach(([cat, input]) => { input.checked = visible[cat]; });
                 if (images.length === 0) {
                     loadImages();
                 } else {
@@ -665,20 +678,26 @@ function setupFilterButtons() {
 
 function showView(view) {
     currentView = view;
-    const toggleGroup = document.getElementById('toggleGroup');
-    if (toggleGroup) {
-        toggleGroup.style.display = view === 'openai-log' ? 'none' : '';
+    if (dashboardPanel) {
+        dashboardPanel.style.display = view === 'dashboard' ? '' : 'none';
     }
+    const showGallery = view === 'gallery' || view === 'openai-log';
+    if (gallery) gallery.style.display = showGallery ? '' : 'none';
+    if (loadMoreEl) loadMoreEl.style.display = 'none';
+    if (emptyState) emptyState.style.display = 'none';
+    if (homePlayBtn) homePlayBtn.style.display = view === 'gallery' ? '' : 'none';
 }
 
 function syncFilterButtons() {
     document.querySelectorAll('.filter-btn').forEach(btn => {
         const f = btn.dataset.filter;
         let active = false;
-        if (f === 'other') {
+        if (f === 'dashboard') {
+            active = currentView === 'dashboard';
+        } else if (f === 'other') {
             active = currentView === 'openai-log';
         } else if (currentView === 'gallery') {
-            if (f === 'all') active = visible.bird && visible.animal && visible.human;
+            if (f === 'all') active = visible.bird && visible.animal && !visible.human;
             else if (f === 'bird') active = visible.bird && !visible.animal && !visible.human;
             else if (f === 'animal') active = visible.animal && !visible.bird && !visible.human;
             else if (f === 'human') active = visible.human && !visible.bird && !visible.animal;
@@ -690,10 +709,13 @@ function syncFilterButtons() {
 function setupRefresh() {
     refreshBtn.addEventListener('click', () => {
         refreshBtn.classList.add('spinning');
-        const main = currentView === 'openai-log'
-            ? loadOpenAILog()
-            : loadImages();
-        Promise.all([main, loadStorageCount(), loadStats()]).finally(() => {
+        const promises = [loadStorageCount(), loadStats(), loadStatus()];
+        if (currentView === 'openai-log') {
+            promises.push(loadOpenAILog());
+        } else if (currentView === 'gallery') {
+            promises.push(loadImages());
+        }
+        Promise.all(promises).finally(() => {
             setTimeout(() => refreshBtn.classList.remove('spinning'), 500);
         });
     });
