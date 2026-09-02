@@ -72,6 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupLightbox();
     setupHomeSlideshow();
     setupRefresh();
+    setupOpenAIToggle();
     loadImages();
     loadStorageCount();
     loadStats();
@@ -652,8 +653,16 @@ function setupFilterButtons() {
             const filter = btn.dataset.filter;
             if (filter === 'other') {
                 showView('openai-log');
-                if (currentView === 'openai-log' && openaiLogImages.length === 0) {
+                if (openaiLogImages.length === 0) {
                     loadOpenAILog();
+                } else {
+                    // Rebuild gallery from openaiLogImages to ensure correct cards
+                    // (gallery might contain regular image cards if switching from All/Birds/etc.)
+                    gallery.innerHTML = '';
+                    openaiLogImages.forEach((img, i) => {
+                        gallery.appendChild(buildOpenAILogCard(img, i));
+                    });
+                    applyVisibility();
                 }
             } else if (filter === 'dashboard') {
                 showView('dashboard');
@@ -735,6 +744,31 @@ function setupRefresh() {
             loadOpenAILog(true);
         } else {
             loadImages(true);
+        }
+    });
+}
+
+function setupOpenAIToggle() {
+    const toggle = document.getElementById('openaiToggle');
+    if (!toggle) return;
+
+    fetch(`${WORKER_URL}/config?_=${Date.now()}`, { cache: 'no-store' })
+        .then(res => res.json())
+        .then(data => { toggle.checked = data.openai_enabled; })
+        .catch(() => {});
+
+    toggle.addEventListener('change', async () => {
+        toggle.disabled = true;
+        try {
+            await fetch(`${WORKER_URL}/config`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ openai_enabled: toggle.checked }),
+            });
+        } catch {
+            toggle.checked = !toggle.checked;
+        } finally {
+            toggle.disabled = false;
         }
     });
 }

@@ -24,7 +24,8 @@ export default {
       // Auth check - mutating endpoints require the API_TOKEN secret
       // (set via `wrangler secret put API_TOKEN`). Read endpoints (GET) are
       // public so the Pages gallery can fetch without embedding secrets.
-      const requiresAuth = request.method === 'POST' || request.method === 'DELETE';
+      const requiresAuth = (request.method === 'POST' || request.method === 'DELETE')
+        && path !== '/config';
       if (requiresAuth) {
         const authHeader = request.headers.get('Authorization');
         const token = authHeader && authHeader.startsWith('Bearer ')
@@ -71,7 +72,15 @@ export default {
       if (path === '/clear' && request.method === 'DELETE') {
         return handleClearAll(env, corsHeaders);
       }
-      
+
+      if (path === '/config' && request.method === 'GET') {
+        return handleGetConfig(env, corsHeaders);
+      }
+
+      if (path === '/config' && request.method === 'POST') {
+        return handleSetConfig(request, env, corsHeaders);
+      }
+
       return Response.json({ error: 'Not found' }, { status: 404, headers: corsHeaders });
       
     } catch (error) {
@@ -360,10 +369,13 @@ async function handleHeartbeat(request, env, corsHeaders) {
   await env.DB.prepare(
     'DELETE FROM heartbeats WHERE timestamp < ?'
   ).bind(threeWeeksAgo).run();
-  
+
+  const openaiEnabled = await getSetting(env, 'openai_enabled', 'true');
+
   return Response.json({
     success: true,
     timestamp: now,
+    openai_enabled: openaiEnabled === 'true',
   }, { headers: corsHeaders });
 }
 
@@ -478,4 +490,42 @@ async function handleClearAll(env, corsHeaders) {
       message: error.message 
     }, { status: 500, headers: corsHeaders });
   }
+}
+
+async function ensureSettingsTable(env) {
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)'
+  ).run();
+}
+
+async function getSetting(env, key, defaultValue) {
+  await ensureSettingsTable(env);
+  const row = await env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind(key).first();
+  return row ? row.value : defaultValue;
+}
+
+async function setSetting(env, key, value) {
+  await ensureSettingsTable(env);
+  await env.DB.prepare(
+    'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)'
+  ).bind(key, value).run();
+}
+
+async function handleGetConfig(env, corsHeaders) {
+  const openaiEnabled = await getSetting(env, 'openai_enabled', 'true');
+  return Response.json({
+    openai_enabled: openaiEnabled === 'true',
+  }, { headers: corsHeaders });
+}
+
+async function handleSetConfig(request, env, corsHeaders) {
+  const body = await request.json();
+  if (typeof body.openai_enabled !== 'boolean') {
+    return Response.json({ error: 'openai_enabled must be a boolean' }, { status: 400, headers: corsHeaders });
+  }
+  await setSetting(env, 'openai_enabled', body.openai_enabled ? 'true' : 'false');
+  return Response.json({
+    success: true,
+    openai_enabled: body.openai_enabled,
+  }, { headers: corsHeaders });
 }

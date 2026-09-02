@@ -100,6 +100,12 @@ class HeartbeatSender:
             resp = requests.post(url, json=payload, headers=headers, timeout=10)
             if resp.status_code == 200:
                 logger.debug("Heartbeat sent successfully")
+                try:
+                    data = resp.json()
+                    if 'openai_enabled' in data:
+                        self.camera.openai_remote_enabled = data['openai_enabled']
+                except Exception:
+                    pass
             else:
                 logger.warning(f"Heartbeat failed: HTTP {resp.status_code}")
         except Exception as e:
@@ -146,6 +152,10 @@ class HummingbirdCamera:
         # If it did, never skip the next frame on similarity alone — the bird may
         # still be there and we must not miss it.
         self._prev_frame_had_detection = False
+        
+        # Remote toggle from the web UI — defaults to True until the first
+        # heartbeat response tells us otherwise.
+        self.openai_remote_enabled = True
         
         # Signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -389,6 +399,8 @@ class HummingbirdCamera:
 
                 if not self.openai:
                     skip_reason = 'openai-disabled'
+                elif not self.openai_remote_enabled:
+                    skip_reason = 'openai-remote-disabled'
                 elif not has_any_object:
                     skip_reason = 'no-detection'
                 else:
