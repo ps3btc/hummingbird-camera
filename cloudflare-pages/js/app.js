@@ -675,6 +675,10 @@ function setupFilterButtons() {
                 if (images.length === 0) {
                     loadImages();
                 } else {
+                    // Rebuild gallery from images array to ensure correct cards
+                    // (gallery might contain OpenAI log cards if switching from Other view)
+                    gallery.innerHTML = '';
+                    images.forEach((img, i) => gallery.appendChild(buildCard(img, i)));
                     applyVisibility();
                 }
             }
