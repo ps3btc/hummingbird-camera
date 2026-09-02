@@ -109,7 +109,13 @@ async function loadImages(append = false) {
         const normalized = (data.objects || []).map(normalizeObject);
         images = images.concat(normalized);
 
-        normalized.forEach((img, i) => gallery.appendChild(buildCard(img, images.length - normalized.length + i)));
+        // Sort all images by timestamp (newest first) to maintain consistent order
+        // across pagination, since R2 returns in lexicographic order per page
+        images.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        // Rebuild gallery from sorted array
+        gallery.innerHTML = '';
+        images.forEach((img, i) => gallery.appendChild(buildCard(img, i)));
         loadMoreEl.style.display = truncated ? 'block' : 'none';
         applyVisibility();
     } catch (err) {
@@ -155,8 +161,13 @@ async function loadOpenAILog(append = false) {
         const normalized = (data.objects || []).map(normalizeOpenAILogObject);
         openaiLogImages = openaiLogImages.concat(normalized);
 
-        normalized.forEach((img, i) => {
-            gallery.appendChild(buildOpenAILogCard(img, openaiLogImages.length - normalized.length + i));
+        // Sort all images by timestamp (newest first) to maintain consistent order
+        openaiLogImages.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+        // Rebuild gallery from sorted array
+        gallery.innerHTML = '';
+        openaiLogImages.forEach((img, i) => {
+            gallery.appendChild(buildOpenAILogCard(img, i));
         });
         loadMoreEl.style.display = openaiLogTruncated ? 'block' : 'none';
         applyVisibility();
