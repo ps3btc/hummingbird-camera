@@ -154,6 +154,8 @@ async function handleUpload(request, env, corsHeaders) {
     interesting: openai.interesting || '',
     ai_model: openai.model || 'local',
     openai_response: openaiResponseStr,
+    // Capture mode (motion-only vs local+openai) — top-level `mode` from Pi
+    capture_mode: metadata.mode || '',
   };
   
   // Upload to R2
@@ -181,9 +183,12 @@ async function handleList(request, env, corsHeaders) {
   const cursor = url.searchParams.get('cursor');
   const prefix = url.searchParams.get('prefix') || '';
 
+  // R2's list() does not include httpMetadata/customMetadata by default —
+  // pass them in `include` or the gallery sees empty {} for every object.
   const options = {
     limit: Math.min(limit, 100),
     prefix: prefix,
+    include: ['httpMetadata', 'customMetadata'],
   };
 
   if (cursor) {

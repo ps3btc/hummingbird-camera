@@ -203,7 +203,7 @@ function normalizeOpenAILogObject(obj) {
         hasBird: !!(openai.has_bird ?? (md.has_bird === 'true')),
         hasAnimal: !!(openai.has_animal ?? (md.has_animal === 'true')),
         hasHuman: !!(openai.has_human ?? (md.has_human === 'true')),
-        mode: openai.mode || 'unknown',
+        mode: md.capture_mode || 'unknown',
         callNumber: openai.call_number || null,
         timestamp: md.timestamp || obj.uploaded,
         uploaded: obj.uploaded,
