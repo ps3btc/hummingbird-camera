@@ -37,6 +37,24 @@
             </div>
         </header>
 
+        <!-- System Status: always-visible Pi / App banner with red/green LEDs -->
+        <section class="status-banner" aria-label="System status">
+            <div class="status-card led" id="piStatusTopCard">
+                <span class="led-dot" id="piStatusDotTop" aria-hidden="true"></span>
+                <div class="status-card-text">
+                    <div class="status-card-label">Raspberry Pi</div>
+                    <div class="status-card-value" id="piStatusTextTop">checking…</div>
+                </div>
+            </div>
+            <div class="status-card led" id="appStatusTopCard">
+                <span class="led-dot" id="appStatusDotTop" aria-hidden="true"></span>
+                <div class="status-card-text">
+                    <div class="status-card-label">Camera App</div>
+                    <div class="status-card-value" id="appStatusTextTop">checking…</div>
+                </div>
+            </div>
+        </section>
+
         <!-- Summary cards -->
         <section class="summary-strip" id="summaryStrip">
             <div class="summary-card">
@@ -57,26 +75,8 @@
             </div>
         </section>
 
-        <!-- Dashboard Panel: Visit Frequency + Pi Status -->
+        <!-- Dashboard Panel: Visit Frequency + Pi Status details -->
         <section class="dashboard-panel" id="dashboardPanel" style="display: none;">
-            <!-- Prominent Pi / App status cards at the very top -->
-            <div class="pi-status-top">
-                <div class="status-card" id="piStatusTopCard">
-                    <span class="status-dot big" id="piStatusDotTop"></span>
-                    <div class="status-card-text">
-                        <div class="status-card-label">Raspberry Pi</div>
-                        <div class="status-card-value" id="piStatusTextTop">checking…</div>
-                    </div>
-                </div>
-                <div class="status-card" id="appStatusTopCard">
-                    <span class="status-dot big" id="appStatusDotTop"></span>
-                    <div class="status-card-text">
-                        <div class="status-card-label">Camera App</div>
-                        <div class="status-card-value" id="appStatusTextTop">checking…</div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Visit Frequency -->
             <div class="analytics">
                 <div class="section-heading">
