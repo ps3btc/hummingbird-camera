@@ -127,6 +127,18 @@ async function handleUpload(request, env, corsHeaders) {
   // OpenAI vision metadata (if available)
   const openai = metadata.openai || {};
 
+  // R2 customMetadata is capped at 2KB total per object. Serialize the openai
+  // response and truncate so it can't blow the limit alongside the other fields.
+  let openaiResponseStr = '';
+  if (openai && Object.keys(openai).length > 0) {
+    const full = JSON.stringify(openai);
+    if (full.length <= 1500) {
+      openaiResponseStr = full;
+    } else {
+      openaiResponseStr = full.slice(0, 1500) + '... (truncated)';
+    }
+  }
+
   const customMetadata = {
     detection_type: detectionType,
     log_kind: logKind,
@@ -141,7 +153,7 @@ async function handleUpload(request, env, corsHeaders) {
     scene_description: openai.scene_description || '',
     interesting: openai.interesting || '',
     ai_model: openai.model || 'local',
-    openai_response: openai ? JSON.stringify(openai) : '',
+    openai_response: openaiResponseStr,
   };
   
   // Upload to R2

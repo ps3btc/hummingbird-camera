@@ -176,8 +176,15 @@ async function loadOpenAILog(append = false) {
 function normalizeOpenAILogObject(obj) {
     const md = obj.customMetadata || {};
     let openai = {};
+    let truncated = false;
     try {
-        openai = md.openai_response ? JSON.parse(md.openai_response) : {};
+        let raw = md.openai_response || '';
+        if (raw.endsWith('... (truncated)')) {
+            raw = raw.slice(0, -'... (truncated)'.length);
+            truncated = true;
+        }
+        openai = raw ? JSON.parse(raw) : {};
+        if (truncated) openai._truncated = true;
     } catch (e) { /* ignore */ }
 
     let localDetections = [];
@@ -281,6 +288,9 @@ function openOpenAILogLightbox(index) {
 
     const responseJson = `<details style="margin-top:10px;">
         <summary style="cursor:pointer;font-size:12px;color:var(--text-dim);">OpenAI raw response</summary>
+        ${img.openai && img.openai._truncated
+            ? '<div style="margin-top:4px;font-size:11px;color:var(--text-faint);font-style:italic;">(response was truncated to fit R2 metadata limits)</div>'
+            : ''}
         <pre style="margin-top:6px;padding:8px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;font-size:11px;white-space:pre-wrap;word-break:break-word;color:var(--text);">${escapeHtml(JSON.stringify(img.openai, null, 2))}</pre>
     </details>`;
 
