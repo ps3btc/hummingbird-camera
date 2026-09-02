@@ -336,7 +336,7 @@ body {
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 12px;
-    margin: 28px 0 16px;
+    margin: 28px 0 0;
     padding: 12px 14px;
     background: var(--card);
     border: 1px solid var(--border);
@@ -418,6 +418,7 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 14px;
+    margin-top: 16px;
 }
 
 .card {
