@@ -197,14 +197,14 @@ async function handleList(request, env, corsHeaders) {
 
   const listed = await env.BUCKET.list(options);
   
-  // Format objects with metadata
+  // Format objects with metadata, then reverse to show most recent first
   const objects = listed.objects.map(obj => ({
     key: obj.key,
     size: obj.size,
     uploaded: obj.uploaded.toISOString(),
     httpMetadata: obj.httpMetadata,
     customMetadata: obj.customMetadata || {},
-  }));
+  })).reverse();
   
   return Response.json({
     objects: objects,
