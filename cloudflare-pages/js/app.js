@@ -77,6 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadStorageCount();
     loadStats();
     loadStatus();
+    loadCleanup();
 });
 
 // ── Data loading ────────────────────────────────────────────
@@ -487,6 +488,33 @@ function formatUptime(seconds) {
         return `${hours}h ${mins}m`;
     }
     return `${mins}m`;
+}
+
+async function loadCleanup() {
+    const annotation = document.getElementById('cleanupAnnotation');
+    const text = document.getElementById('cleanupText');
+    if (!annotation || !text) return;
+
+    try {
+        const res = await fetch(`${WORKER_URL}/cleanup?_=${Date.now()}`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (!data.last_run) return;
+
+        const ago = formatTimeAgo(data.last_run);
+        text.textContent = `Cleanup ${ago}: deleted ${data.deleted} clear image${data.deleted !== 1 ? 's' : ''} (${data.scanned} scanned)`;
+        annotation.style.display = '';
+    } catch (e) { /* non-fatal */ }
+}
+
+function formatTimeAgo(iso) {
+    const diff = Date.now() - new Date(iso).getTime();
+    const hours = Math.floor(diff / 3600000);
+    if (hours < 1) return 'just now';
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
 }
 
 let uptimeChartInstance = null;

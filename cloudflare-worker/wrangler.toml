@@ -13,3 +13,6 @@ database_id = "6b740056-e015-4765-b964-f49eac176e15"
 
 [vars]
 MAX_FILES = 19500
+
+[triggers]
+crons = ["0 */6 * * *"]

@@ -912,6 +912,16 @@ body {
     text-align: right;
 }
 
+/* ── Cleanup annotation ───────────────────────────────────── */
+
+.cleanup-annotation {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-faint);
+    padding: 6px 0 0;
+    font-style: italic;
+}
+
 /* ── Responsive ─────────────────────────────────────────── */
 
 @media (max-width: 768px) {

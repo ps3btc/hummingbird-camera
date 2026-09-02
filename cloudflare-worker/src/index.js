@@ -81,6 +81,10 @@ export default {
         return handleSetConfig(request, env, corsHeaders);
       }
 
+      if (path === '/cleanup' && request.method === 'GET') {
+        return handleGetCleanup(env, corsHeaders);
+      }
+
       return Response.json({ error: 'Not found' }, { status: 404, headers: corsHeaders });
       
     } catch (error) {
@@ -91,6 +95,61 @@ export default {
     }
   }
 };
+
+/**
+ * Cron trigger: runs every 6 hours to clean up images where OpenAI
+ * confirmed no wildlife (no bird, animal, or human detected).
+ */
+export const scheduled = {
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(runCleanup(env));
+  }
+};
+
+async function runCleanup(env) {
+  const now = new Date().toISOString();
+  let deleted = 0;
+  let scanned = 0;
+  let cursor = null;
+
+  do {
+    const options = {
+      limit: 1000,
+      include: ['customMetadata'],
+    };
+    if (cursor) options.cursor = cursor;
+
+    const listed = await env.BUCKET.list(options);
+
+    for (const obj of listed.objects) {
+      scanned++;
+      const md = obj.customMetadata || {};
+
+      // Only delete if OpenAI was actually called (has openai_response)
+      // AND all three detection flags are false.
+      if (!md.openai_response) continue;
+      if (md.has_bird === 'true' || md.has_animal === 'true' || md.has_human === 'true') continue;
+
+      await env.BUCKET.delete(obj.key);
+      deleted++;
+    }
+
+    cursor = listed.cursor;
+  } while (cursor);
+
+  // Store cleanup results in D1
+  await env.DB.prepare(
+    'CREATE TABLE IF NOT EXISTS cleanup_log (id INTEGER PRIMARY KEY, timestamp TEXT, deleted_count INTEGER, scanned_count INTEGER)'
+  ).run();
+  await env.DB.prepare(
+    'INSERT INTO cleanup_log (timestamp, deleted_count, scanned_count) VALUES (?, ?, ?)'
+  ).bind(now, deleted, scanned).run();
+
+  // Keep only last 10 cleanup records
+  await env.DB.prepare(
+    'DELETE FROM cleanup_log WHERE id NOT IN (SELECT id FROM cleanup_log ORDER BY id DESC LIMIT 10)'
+  ).run();
+}
 
 /**
  * Upload image to R2 with metadata
@@ -528,4 +587,27 @@ async function handleSetConfig(request, env, corsHeaders) {
     success: true,
     openai_enabled: body.openai_enabled,
   }, { headers: corsHeaders });
+}
+
+async function handleGetCleanup(env, corsHeaders) {
+  try {
+    await env.DB.prepare(
+      'CREATE TABLE IF NOT EXISTS cleanup_log (id INTEGER PRIMARY KEY, timestamp TEXT, deleted_count INTEGER, scanned_count INTEGER)'
+    ).run();
+    const row = await env.DB.prepare(
+      'SELECT timestamp, deleted_count, scanned_count FROM cleanup_log ORDER BY id DESC LIMIT 1'
+    ).first();
+
+    if (!row) {
+      return Response.json({ last_run: null, deleted: 0, scanned: 0 }, { headers: corsHeaders });
+    }
+
+    return Response.json({
+      last_run: row.timestamp,
+      deleted: row.deleted_count,
+      scanned: row.scanned_count,
+    }, { headers: corsHeaders });
+  } catch (e) {
+    return Response.json({ last_run: null, deleted: 0, scanned: 0 }, { headers: corsHeaders });
+  }
 }
