@@ -348,10 +348,6 @@ async function loadStats() {
         if (!res.ok) throw new Error(`stats ${res.status}`);
         const data = await res.json();
 
-        document.getElementById('totalVisits').textContent = data.total;
-        document.getElementById('birdVisits').textContent = data.byType.bird || 0;
-        document.getElementById('animalVisits').textContent = data.byType.animal || 0;
-        document.getElementById('humanVisits').textContent = data.byType.human || 0;
         analyticsNote.textContent = `${data.total} captures analyzed`;
 
         // Only draw charts when the dashboard is visible — otherwise the
