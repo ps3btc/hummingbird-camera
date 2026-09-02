@@ -750,27 +750,49 @@ function setupRefresh() {
 
 function setupOpenAIToggle() {
     const toggle = document.getElementById('openaiToggle');
-    if (!toggle) return;
+    const dot = document.getElementById('openaiStatusDot');
+    const text = document.getElementById('openaiStatusText');
+    const card = document.getElementById('openaiStatusCard');
+
+    function setOpenAIState(enabled) {
+        if (dot) {
+            dot.classList.toggle('online', enabled);
+            dot.classList.toggle('offline', !enabled);
+        }
+        if (card) {
+            card.classList.toggle('online', enabled);
+            card.classList.toggle('offline', !enabled);
+        }
+        if (text) text.textContent = enabled ? 'Enabled' : 'Disabled';
+    }
 
     fetch(`${WORKER_URL}/config?_=${Date.now()}`, { cache: 'no-store' })
         .then(res => res.json())
-        .then(data => { toggle.checked = data.openai_enabled; })
-        .catch(() => {});
+        .then(data => {
+            setOpenAIState(data.openai_enabled);
+            if (toggle) toggle.checked = data.openai_enabled;
+        })
+        .catch(() => {
+            if (text) text.textContent = 'Unknown';
+        });
 
-    toggle.addEventListener('change', async () => {
-        toggle.disabled = true;
-        try {
-            await fetch(`${WORKER_URL}/config`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ openai_enabled: toggle.checked }),
-            });
-        } catch {
-            toggle.checked = !toggle.checked;
-        } finally {
-            toggle.disabled = false;
-        }
-    });
+    if (toggle) {
+        toggle.addEventListener('change', async () => {
+            toggle.disabled = true;
+            try {
+                await fetch(`${WORKER_URL}/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ openai_enabled: toggle.checked }),
+                });
+                setOpenAIState(toggle.checked);
+            } catch {
+                toggle.checked = !toggle.checked;
+            } finally {
+                toggle.disabled = false;
+            }
+        });
+    }
 }
 
 // ── Charts (pure canvas, no libraries) ──────────────────────
