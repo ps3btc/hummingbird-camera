@@ -302,7 +302,15 @@ async function handleDeleteOldest(env, corsHeaders) {
  */
 async function handleGetImage(request, env, corsHeaders) {
   const url = new URL(request.url);
-  const key = url.pathname.replace('/image/', '');
+  // Browser encodes the '/' in prefixed keys (e.g. "openai-log/foo.jpg") as %2F,
+  // so decode before using the value as the R2 key. Falling back to the raw
+  // pathname keeps the legacy non-prefixed path working.
+  let key;
+  try {
+    key = decodeURIComponent(url.pathname.replace('/image/', ''));
+  } catch (e) {
+    key = url.pathname.replace('/image/', '');
+  }
   
   if (!key) {
     return Response.json({ error: 'No key provided' }, { status: 400, headers: corsHeaders });
