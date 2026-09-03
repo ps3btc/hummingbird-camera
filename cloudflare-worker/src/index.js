@@ -25,7 +25,8 @@ export default {
       // (set via `wrangler secret put API_TOKEN`). Read endpoints (GET) are
       // public so the Pages gallery can fetch without embedding secrets.
       const requiresAuth = (request.method === 'POST' || request.method === 'DELETE')
-        && path !== '/config';
+        && path !== '/config'
+        && path !== '/cleanup';
       if (requiresAuth) {
         const authHeader = request.headers.get('Authorization');
         const token = authHeader && authHeader.startsWith('Bearer ')
@@ -86,8 +87,8 @@ export default {
       }
 
       if (path === '/cleanup' && request.method === 'POST') {
-        ctx.waitUntil(runCleanup(env));
-        return Response.json({ success: true, message: 'Cleanup started' }, { headers: corsHeaders });
+        const result = await runCleanup(env);
+        return Response.json({ success: true, message: 'Cleanup completed', ...result }, { headers: corsHeaders });
       }
 
       return Response.json({ error: 'Not found' }, { status: 404, headers: corsHeaders });
@@ -192,6 +193,8 @@ async function runCleanup(env) {
   } catch (e) {
     console.error('Failed to check camera status:', e);
   }
+
+  return { deleted, scanned };
 }
 
 /**
