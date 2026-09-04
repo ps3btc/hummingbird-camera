@@ -147,19 +147,6 @@ async function runCleanup(env) {
     cursor = listed.cursor;
   } while (cursor);
 
-  // Store cleanup results in D1
-  await env.DB.prepare(
-    'CREATE TABLE IF NOT EXISTS cleanup_log (id INTEGER PRIMARY KEY, timestamp TEXT, deleted_count INTEGER, scanned_count INTEGER)'
-  ).run();
-  await env.DB.prepare(
-    'INSERT INTO cleanup_log (timestamp, deleted_count, scanned_count) VALUES (?, ?, ?)'
-  ).bind(nowISO, deleted, scanned).run();
-
-  // Keep only last 10 cleanup records
-  await env.DB.prepare(
-    'DELETE FROM cleanup_log WHERE id NOT IN (SELECT id FROM cleanup_log ORDER BY id DESC LIMIT 10)'
-  ).run();
-
   // Check if camera app is offline (no heartbeat in last 15 minutes)
   try {
     const latest = await env.DB.prepare(
@@ -540,12 +527,6 @@ async function handleHeartbeat(request, env, corsHeaders) {
   await env.DB.prepare(
     'INSERT INTO heartbeats (timestamp, status, details) VALUES (?, ?, ?)'
   ).bind(now, status, detailsStr).run();
-  
-  // Clean up old records (keep 3 weeks)
-  const threeWeeksAgo = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString();
-  await env.DB.prepare(
-    'DELETE FROM heartbeats WHERE timestamp < ?'
-  ).bind(threeWeeksAgo).run();
 
   const openaiEnabled = await getSetting(env, 'openai_enabled', 'true');
 
@@ -676,13 +657,11 @@ async function ensureSettingsTable(env) {
 }
 
 async function getSetting(env, key, defaultValue) {
-  await ensureSettingsTable(env);
   const row = await env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind(key).first();
   return row ? row.value : defaultValue;
 }
 
 async function setSetting(env, key, value) {
-  await ensureSettingsTable(env);
   await env.DB.prepare(
     'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)'
   ).bind(key, value).run();
@@ -708,26 +687,7 @@ async function handleSetConfig(request, env, corsHeaders) {
 }
 
 async function handleGetCleanup(env, corsHeaders) {
-  try {
-    await env.DB.prepare(
-      'CREATE TABLE IF NOT EXISTS cleanup_log (id INTEGER PRIMARY KEY, timestamp TEXT, deleted_count INTEGER, scanned_count INTEGER)'
-    ).run();
-    const row = await env.DB.prepare(
-      'SELECT timestamp, deleted_count, scanned_count FROM cleanup_log ORDER BY id DESC LIMIT 1'
-    ).first();
-
-    if (!row) {
-      return Response.json({ last_run: null, deleted: 0, scanned: 0 }, { headers: corsHeaders });
-    }
-
-    return Response.json({
-      last_run: row.timestamp,
-      deleted: row.deleted_count,
-      scanned: row.scanned_count,
-    }, { headers: corsHeaders });
-  } catch (e) {
-    return Response.json({ last_run: null, deleted: 0, scanned: 0 }, { headers: corsHeaders });
-  }
+  return Response.json({ message: 'Cleanup runs every 6 hours via cron. POST /cleanup to trigger manually.' }, { headers: corsHeaders });
 }
 
 /**
